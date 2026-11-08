@@ -147,7 +147,11 @@ export class GameRoom extends DurableObject {
   async fetch(request) {
     if (new URL(request.url).pathname === '/last') {
       // How the last finished day ended (shown in the start menu).
-      return Response.json(this.last, { headers: { 'cache-control': 'public, max-age=30' } });
+      try {
+        return Response.json(this.last ?? null, { headers: { 'cache-control': 'public, max-age=30' } });
+      } catch (e) {
+        return new Response(`last-day error: ${e && e.stack ? e.stack : e}`, { status: 500 });
+      }
     }
     if (new URL(request.url).pathname === '/stats') {
       // Simple player statistics (last 14 game days): joins, unique players, peak online.

@@ -21,7 +21,7 @@
     "not_found_handling": "single-page-application",
     // IMPORTANT: requests to /ws must reach our Worker code first,
     // otherwise the SPA fallback would answer them with index.html.
-    "run_worker_first": ["/ws", "/stats"]
+    "run_worker_first": ["/ws", "/stats", "/last"]
   },
 
   // The Durable Object that runs the multiplayer room.

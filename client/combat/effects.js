@@ -5,7 +5,7 @@
 //   - blocking (CRS: shield in front; others: arms up to guard)
 //   - carrying a bin/barrier above the head, holding the placard up
 //   - red flash when hit, falling over + spinning stars when knocked out
-//   - emotes: wave, raised fist, hands up, clap, dance, sit
+//   - emotes: wave, hands up, clap, dance, sit
 //   - chat bubbles and floating "BONK!" text
 // Works on any mesh made by createPlayerMesh (local, remote, NPC, menu preview).
 
@@ -107,7 +107,6 @@ export class CharacterFx {
 
     switch (emote) {
       case 'wave': ra = -2.7; raz = Math.sin(this.time * 10) * 0.4; break;
-      case 'fist': ra = -3.05; raz = 0.1; break;
       case 'handsup': ra = -2.9; la = -2.9; raz = 0.35; laz = -0.35; break;
       case 'clap': {
         const c = Math.sin(this.time * 14) * 0.35;

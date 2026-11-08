@@ -77,7 +77,7 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
     if (!dragging) spin = Math.sin(now / 2500) * 0.9; // gently turns left and right
     mesh.rotation.y = spin;
     nextEmote -= dt;
-    if (nextEmote <= 0) { fx.playEmote([0, 4, 1][Math.floor(Math.random() * 3)]); nextEmote = 5; }
+    if (nextEmote <= 0) { fx.playEmote([0, 3, 1][Math.floor(Math.random() * 3)]); nextEmote = 5; }
     fx.update(dt, 0);
     renderer.render(scene, camera);
     requestAnimationFrame(loop);

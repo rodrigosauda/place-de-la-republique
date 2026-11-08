@@ -245,7 +245,6 @@ export function formatClock(minutes) {
 // Emotes (press T or use the bottom bar). `sec` = how long it plays (0 = until you move).
 export const EMOTE_LIST = [
   { id: 'wave', label: 'Wave', sec: 2.5 },
-  { id: 'fist', label: 'Raised fist', sec: 3 },
   { id: 'handsup', label: 'Hands up', sec: 3 },
   { id: 'clap', label: 'Clap', sec: 3 },
   { id: 'dance', label: 'Dance', sec: 6 },

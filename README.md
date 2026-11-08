@@ -122,7 +122,7 @@ Slow computer? Add `?quality=low` to the link (no shadows, fewer details).
   skin, hair, tops (incl. marinière), trousers, hats (beret, bonnet phrygien…), face (sunglasses, scarf,
   gas mask…), back items, placard style, Riot Police unit number. Catalog: `shared/looks.js`.
   Items marked `premium` show a € badge; they're free while `PREMIUM_ENFORCED = false`.
-- Emotes (wave, raised fist, hands up, clap, dance, sit) and graffiti tags on walls (5 per game day).
+- Emotes (wave, hands up, clap, dance, sit) and graffiti tags on walls (5 per game day).
 - Bottom menu bar: Outfit · Emotes · Tag · Chat · Menu (controls, sound, quality).
 - More realistic look: a real sky with a moving sun, light from an HDR photo (CC0, Poly Haven),
   filmic colours, soft corner shadows and night glow (high quality), painted stone / zinc / paving /

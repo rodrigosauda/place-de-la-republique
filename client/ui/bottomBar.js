@@ -6,6 +6,7 @@
 
 import { EMOTE_LIST } from '../../shared/constants.js';
 import { createOutfitEditor } from './outfitEditor.js';
+import { openShop } from './shop.js';
 
 export function createBottomBar({ onEmote, onTag, onChat, onOutfitSaved, onOpenWindow, onCloseWindow, getOutfitContext, onMute, getSponsor }) {
   const bar = document.createElement('div');
@@ -15,6 +16,7 @@ export function createBottomBar({ onEmote, onTag, onChat, onOutfitSaved, onOpenW
     ['outfit', 'Outfit', 'O'],
     ['emotes', 'Emotes', 'T'],
     ['tag', 'Tag', 'V'],
+    ['shop', 'Shop', ''],
     ['chat', 'Chat', 'Enter'],
     ['menu', 'Menu', ''],
   ];
@@ -137,6 +139,7 @@ export function createBottomBar({ onEmote, onTag, onChat, onOutfitSaved, onOpenW
   bar.addEventListener('click', (e) => {
     const id = e.target.closest('button')?.dataset.id;
     if (id === 'outfit') openOutfit();
+    if (id === 'shop') openShop({ onOpen: onOpenWindow, onClose: onCloseWindow });
     if (id === 'emotes') (picker.style.display === 'none' ? openPicker() : closePicker());
     if (id === 'tag') onTag();
     if (id === 'chat') onChat();

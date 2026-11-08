@@ -1,17 +1,23 @@
 // client/ui/outfitEditor.js
 // The outfit editor: a live 3D preview of your character + rows of options.
 // Used in the start menu and in game (bottom bar → "Outfit").
-// Premium items show a "€" badge. While PREMIUM_ENFORCED is false (shared/looks.js)
-// they are free for everyone — that's how we learn what people like before selling.
+// Premium items show their price (or a tick once owned). You can try a locked item on in the preview;
+// a strip under the preview then offers to buy it. Locked items are dropped when you save or play
+// (and the server checks again), see wallet.cleanLook.
 
 import { DEFAULT_WEAPON } from '../../shared/constants.js';
 import * as THREE from 'three';
 import { createPlayerMesh } from '../player/playerMesh.js';
 import { CharacterFx } from '../combat/effects.js';
 import {
-  BODIES, SKINS, HAIRS, HAIR_COLORS, TOPS, PANTS, HATS, FACES, BACKS, PLACARDS,
-  PREMIUM_ENFORCED, defaultLook, itemAllowed,
+  BODIES, SKINS, HAIRS, HAIR_COLORS, TOPS, PANTS, HATS, FACES, BACKS, PLACARDS, TRAILS, FLAIRS,
+  SHOP_SLOTS, CATALOG_FOR_EDITOR, defaultLook, itemAllowed, itemKey, priceOfItem,
 } from '../../shared/looks.js';
+import { formatPrice, totalPrice } from '../../shared/shop.js';
+import { wallet } from '../shop/wallet.js';
+import { openShop } from './shop.js';
+
+const EVERYTHING = { has: () => true }; // "owned" set used only to decide which items this side may SEE
 
 // Remember the last outfit per faction in this browser (nice to have; works without).
 export function loadSavedLook(faction) {
@@ -34,7 +40,11 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
   previewBox.className = 'outfit-preview';
   const options = document.createElement('div');
   options.className = 'outfit-options';
-  root.append(previewBox, options);
+  const strip = document.createElement('div');
+  strip.className = 'outfit-locked';
+  strip.style.display = 'none';
+  root.append(previewBox, options, strip);
+  const badges = [];
 
   // ---------------------------------------------------------------- 3D preview
   const W = 220, H = 260;
@@ -85,7 +95,32 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
   requestAnimationFrame(loop);
 
   // ---------------------------------------------------------------- options
-  const changed = () => { rebuild(); onChange?.({ ...look }); };
+  // Price tags on premium items, and the "try-on only" strip under the preview.
+  function refreshLocks() {
+    for (const badge of badges) {
+      const own = wallet.owned.has(badge.dataset.key);
+      badge.textContent = own ? '✓' : formatPrice(Number(badge.dataset.price));
+      badge.classList.toggle('own', own);
+      badge.title = own ? 'You own this' : 'Premium: try it on, buy it to wear it in the game';
+    }
+    const locked = [];
+    for (const slot of SHOP_SLOTS) {
+      const key = itemKey(slot, look[slot]);
+      if (key && !wallet.owned.has(key) && itemAllowed(slot, look[slot], faction, EVERYTHING)) locked.push([key, CATALOG_FOR_EDITOR[slot][look[slot]].label]);
+    }
+    strip.style.display = locked.length ? '' : 'none';
+    if (!locked.length) return;
+    strip.innerHTML = '';
+    const msg = document.createElement('span');
+    msg.textContent = `Try-on only: ${locked.map((l) => l[1]).join(', ')}. You will not wear ${locked.length > 1 ? 'them' : 'it'} in the game until you buy ${locked.length > 1 ? 'them' : 'it'}.`;
+    const buy = document.createElement('button');
+    buy.type = 'button';
+    buy.textContent = `Shop · ${formatPrice(totalPrice(locked.map((l) => l[0]), wallet.owned))}`;
+    buy.addEventListener('click', () => openShop({ highlight: locked.map((l) => l[0]) }));
+    strip.append(msg, buy);
+  }
+  const offWallet = wallet.onChange(refreshLocks);
+  const changed = () => { rebuild(); refreshLocks(); onChange?.({ ...look }); };
 
   function row(title, slot, list, render) {
     const r = document.createElement('div');
@@ -96,7 +131,7 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
     const items = document.createElement('div');
     items.className = 'outfit-items';
     list.forEach((item, i) => {
-      if (!itemAllowed(slot, i, faction)) return; // other faction's items
+      if (!itemAllowed(slot, i, faction, EVERYTHING)) return; // other faction's items
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'outfit-item' + (look[slot] === i ? ' selected' : '');
@@ -104,9 +139,10 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
       if (typeof item === 'object' && item.premium) {
         const badge = document.createElement('span');
         badge.className = 'premium';
-        badge.textContent = '€';
-        badge.title = PREMIUM_ENFORCED ? 'Premium' : 'Premium — free for now';
+        badge.dataset.key = `${slot}:${item.id}`;
+        badge.dataset.price = priceOfItem(item);
         b.appendChild(badge);
+        badges.push(badge);
       }
       b.addEventListener('click', () => {
         look[slot] = i;
@@ -138,6 +174,8 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
   row('Face', 'face', FACES, text);
   row('Back', 'back', BACKS, text);
   if (faction === 'g') row('Placard', 'placard', PLACARDS, text);
+  row('Footstep trail', 'trail', TRAILS, text);
+  row('Name flair', 'flair', FLAIRS, text);
   if (faction === 'c') {
     const r = document.createElement('div');
     r.className = 'outfit-row';
@@ -157,11 +195,14 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
     options.appendChild(r);
   }
 
+  refreshLocks();
+
   return {
     element: root,
     getLook: () => ({ ...look }),
     destroy() {
       alive = false;
+      offWallet();
       if (mesh) mesh.userData.dispose();
       renderer.dispose();
       renderer.forceContextLoss();

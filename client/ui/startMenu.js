@@ -7,6 +7,7 @@ import { loadProfile, updateProfile } from '../profile.js';
 import { createOutfitEditor, loadSavedLook, saveLook } from './outfitEditor.js';
 import { currentScenario, scenarioLabel } from '../../shared/timeline.js';
 import { loadProgress, levelProgress } from './progress.js';
+import { openShop } from './shop.js';
 
 const SLOGAN_PRESETS = ['Lower prices!', 'Fair wages', 'Hands off pensions', 'We want to be heard', 'Peaceful and loud', 'Our future!'];
 
@@ -48,6 +49,7 @@ export function showStartMenu(onPlay) {
 
         <div class="menu-actions">
           <button type="submit">Play</button>
+          <button type="button" class="menu-shop" title="Hats, trails and name flair. Cosmetic only.">Shop</button>
           <button type="button" class="watch" title="Walk around the square as a spectator: no body, no score, nobody can hit you">Just watch</button>
         </div>
         <p class="help">Mouse: look around · Shift: run · C: dodge roll · Click / F: hit · Right mouse / Q: block · G: grab/throw ·
@@ -170,6 +172,7 @@ export function showStartMenu(onPlay) {
     onPlay({ name, faction, slogan, look: finalLook, role });
   });
 
+  form.querySelector('.menu-shop').addEventListener('click', () => openShop({}));
   form.querySelector('.watch').addEventListener('click', () => {
     editor.destroy();
     clearInterval(onlineTimer);

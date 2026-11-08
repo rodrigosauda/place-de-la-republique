@@ -46,6 +46,7 @@ export class NetClient {
     this.spectate = false; // true = just watching (no body, no score)
     this.role = '';  // 'm' | 'j' | 'd' | '' (set by main.js)
     this.badge = 0;  // loyalty stars 0-3 (cosmetic)
+    this.code = '';  // shop wallet code: lets the server check which premium items you own
   }
 
   connect(name, faction) {
@@ -67,7 +68,7 @@ export class NetClient {
       this.onStatus('connected');
       const join = this.spectate
         ? { t: MSG.JOIN, sp: 1 }
-        : { t: MSG.JOIN, n: this.name, f: this.faction, s: this.slogan || '', l: this.look, ro: this.role, bd: this.badge };
+        : { t: MSG.JOIN, n: this.name, f: this.faction, s: this.slogan || '', l: this.look, ro: this.role, bd: this.badge, ow: this.code };
       const pose = this.getJoinPose();
       if (pose) { join.p = pose.p; join.r = pose.r; }
       this.send(join);

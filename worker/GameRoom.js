@@ -37,6 +37,7 @@ import {
   currentScenario, scenarioForDay, scenarioMods, scenarioLabel, eventAt,
 } from '../shared/timeline.js';
 import { sanitize } from '../shared/filter.js';
+import { getOwned } from './shop.js';
 import { sanitizeLook, lookToArray, defaultLook, randomLook } from '../shared/looks.js';
 
 // Places NPCs should not walk into (monument, café, métro entrances, kiosk): [x, z, halfW, halfD]
@@ -194,6 +195,18 @@ export class GameRoom extends DurableObject {
   // ------------------------------------------------------------------------
   // Incoming messages
   // ------------------------------------------------------------------------
+  // Items owned by a wallet code, cached for a minute so the Wallet object is not asked on every message.
+  async ownedFor(code, fresh = false) {
+    if (!code || typeof code !== 'string') return new Set();
+    this.walletCache ??= new Map();
+    const hit = this.walletCache.get(code);
+    if (!fresh && hit && Date.now() - hit.at < 60_000) return hit.owned; // `fresh`: just bought something
+    const owned = await getOwned(this.env, code);
+    if (this.walletCache.size > 500) this.walletCache.clear();
+    this.walletCache.set(code, { at: Date.now(), owned });
+    return owned;
+  }
+
   async webSocketMessage(ws, raw) {
     // Ignore binary or oversized messages (cheap protection).
     if (typeof raw !== 'string' || raw.length > MAX_MESSAGE_BYTES) return;
@@ -201,12 +214,15 @@ export class GameRoom extends DurableObject {
     try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || typeof msg.t !== 'string') return;
 
+    // Premium outfit items are checked against the player's wallet code (cached, see ownedFor).
+    const owned = msg.t === MSG.JOIN || msg.t === MSG.LOOK ? await this.ownedFor(msg.ow, msg.t === MSG.LOOK) : null;
+
     const me = ws.deserializeAttachment(); // null until JOIN
     const p = me && this.players.get(me.id);
     if (p && this.overRateLimit(p.id)) return;
 
     switch (msg.t) {
-      case MSG.JOIN: return this.handleJoin(ws, me, msg);
+      case MSG.JOIN: return this.handleJoin(ws, me, msg, owned);
       case MSG.STATE: return p && this.handleState(ws, p, msg);
       case MSG.ENTER: return p && this.handleEnter(ws, p);
       case MSG.EXIT: return p && this.handleExit(p, msg);
@@ -217,7 +233,7 @@ export class GameRoom extends DurableObject {
       case MSG.PROP: return p && this.handleProp(p, msg);
       case MSG.GRAB: return p && this.handleGrab(p, msg);
       case MSG.THROW: return p && this.handleThrow(p, msg);
-      case MSG.LOOK: return p && this.handleLook(ws, p, msg);
+      case MSG.LOOK: return p && this.handleLook(ws, p, msg, owned);
       case MSG.EMOTE: return p && this.handleEmote(p, msg);
       case MSG.TAG: return p && this.handleTag(ws, p, msg);
       case MSG.AD_SEEN: return p && this.handleAdSeen(p, msg);
@@ -239,7 +255,7 @@ export class GameRoom extends DurableObject {
   // ------------------------------------------------------------------------
   // Handlers
   // ------------------------------------------------------------------------
-  handleJoin(ws, me, msg) {
+  handleJoin(ws, me, msg, owned) {
     if (me && me.id) return; // already joined
     if (msg.sp === 1) return this.handleSpectate(ws);
 
@@ -252,7 +268,7 @@ export class GameRoom extends DurableObject {
     const player = {
       id, n: name, f: faction, s: slogan, x: spawn.x, y: 1, z: spawn.z, r: 0,
       v: 0, b: 0, w: DEFAULT_WEAPON[faction], hp: MAX_HP, ko: 0, at: 0, ct: 0, th: 0,
-      l: lookToArray(sanitizeLook(msg.l, faction)), // outfit (validated against the catalog)
+      l: lookToArray(sanitizeLook(msg.l, faction, owned)), // outfit (validated against the catalog and the wallet)
       tg: 0, tgDay: -1, // graffiti tags sprayed today
       ro: roleFor(msg.ro, faction), // optional role (medic / journalist / drummer)
       bd: [0, 1, 2, 3].includes(msg.bd) ? msg.bd : 0, // loyalty badge (cosmetic)
@@ -458,8 +474,8 @@ export class GameRoom extends DurableObject {
   }
 
   // New outfit chosen in the in-game editor.
-  handleLook(ws, p, msg) {
-    p.l = lookToArray(sanitizeLook(msg.l, p.f));
+  handleLook(ws, p, msg, owned) {
+    p.l = lookToArray(sanitizeLook(msg.l, p.f, owned));
     ws.serializeAttachment(p);
     this.register(p.n, p.f, p.s, p.l);
     this.broadcastRoster();

@@ -4,9 +4,11 @@
 //   2. anything else -> serves the built Vite client (static assets in dist/)
 
 import { GameRoom } from './GameRoom.js';
+import { Wallet } from './Wallet.js';
+import { handleShop } from './shop.js';
 
 // Wrangler needs the Durable Object class to be exported from the main module.
-export { GameRoom };
+export { GameRoom, Wallet };
 
 export default {
   async fetch(request, env) {
@@ -51,6 +53,9 @@ export default {
       const room = (url.searchParams.get('room') || 'main').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32) || 'main';
       return env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room)).fetch(request);
     }
+
+    // The shop: checkout and wallet lookups (see worker/shop.js).
+    if (url.pathname.startsWith('/shop/')) return handleShop(request, env);
 
     // Everything else: the static game client.
     return env.ASSETS.fetch(request);

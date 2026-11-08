@@ -19,7 +19,7 @@ import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { FACTIONS } from '../../shared/constants.js';
 import {
-  BODIES, SKINS, HAIRS, HAIR_COLORS, TOPS, PANTS, HATS, FACES, BACKS, PLACARDS, defaultLook,
+  BODIES, SKINS, HAIRS, HAIR_COLORS, TOPS, PANTS, HATS, FACES, BACKS, PLACARDS, FLAIRS, defaultLook,
 } from '../../shared/looks.js';
 
 export const PLAYER_RADIUS = 0.4;
@@ -245,7 +245,11 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
   const color = FACTIONS[faction]?.color ?? 0xffffff;
   const div = document.createElement('div');
   div.className = 'name-label' + (isLocal ? ' local' : '') + (isNpc ? ' npc' : '');
-  div.textContent = isNpc ? `${name} · NPC` : badge ? `${badge} ${name}` : name; // badge = role icon + loyalty stars
+  // Name flair (premium): a star in front, or a coloured / gold name.
+  const flair = isNpc ? 'none' : FLAIRS[look.flair]?.id ?? 'none';
+  const shown = flair === 'star' || flair === 'founder' ? `★ ${name}` : name;
+  div.textContent = isNpc ? `${name} · NPC` : badge ? `${badge} ${shown}` : shown; // badge = role icon + loyalty stars
+  if (flair !== 'none') div.classList.add('flair-' + flair);
   div.style.borderColor = '#' + color.toString(16).padStart(6, '0');
   const label = new CSS2DObject(div);
   label.position.set(0, PLAYER_HALF_HEIGHT + 0.5, 0);

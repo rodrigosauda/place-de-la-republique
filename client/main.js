@@ -50,7 +50,8 @@ import { saveLook } from './ui/outfitEditor.js';
 import { createTagLayer } from './scene/tags.js';
 import { setupAtmosphere } from './scene/atmosphere.js';
 import { createAdBanner } from './scene/adBanner.js';
-import { lookToArray, arrayToLook, gasProtection } from '../shared/looks.js';
+import { lookToArray, arrayToLook, gasProtection, TRAILS } from '../shared/looks.js';
+import { wallet } from './shop/wallet.js';
 
 const FACTION_CSS = { g: '#f7d417', c: '#9fb8ff' };
 
@@ -540,10 +541,11 @@ async function start() {
     getSponsor: () => ({ campaign: adBanner.current, contact: adBanner.contact }),
     getOutfitContext: () => ({ faction: local.faction, look: local.look, slogan: local.slogan }),
     onOutfitSaved: (look) => {
+      look = wallet.cleanLook(local.faction, look); // anything you do not own goes back to the default
       local.setLook(look);
       saveLook(local.faction, look);
       net.look = lookToArray(look);
-      net.send({ t: MSG.LOOK, l: net.look });
+      net.send({ t: MSG.LOOK, l: net.look, ow: wallet.code });
     },
     // While a window is open: free the mouse and stop walking.
     onOpenWindow: () => { cam.unlock(); input.enabled = false; },
@@ -581,7 +583,7 @@ async function start() {
       : `Watching the square · ${humans} player${humans === 1 ? '' : 's'} online`;
   }
 
-  showStartMenu(({ name, faction, slogan, look, role, spectate }) => {
+  showStartMenu(async ({ name, faction, slogan, look, role, spectate }) => {
     sfx.unlock(); // browsers only allow sound after a click
     if (spectate) {
       spectating = true;
@@ -589,6 +591,9 @@ async function start() {
       net.connect('', 'g');
       return;
     }
+    await wallet.ready; // know what you own before dressing you
+    look = wallet.cleanLook(faction, look);
+    net.code = wallet.code;
     const profile = recordVisit(); // counts today, extends your streak
     net.role = role || '';
     net.badge = badgeOf(profile);
@@ -757,6 +762,7 @@ async function start() {
     updateRiot(dt, minutes, now);
     bases.update(now / 1000);
     impacts.update(rawDt > 0.1 ? 0.016 : rawDt);
+    emitTrails();
 
     if (local) adBanner.update(dt, cam.camera);
     atmosphere.render(cam.camera);
@@ -913,6 +919,25 @@ async function start() {
     const line = riot.line;
     if (phaseAt(minutes).id === 'clashes' && Math.random() < dt * 0.25) {
       sfx.whistle(Math.max(0, 1 - Math.hypot(local.position.x - line.x, local.position.z - line.z) / 50));
+    }
+  }
+
+  // Footstep trails (premium): a few bits behind everyone who owns one and is walking.
+  const trailLast = new Map(); // id -> { x, z } where the last bits were dropped
+  const trailPos = new THREE.Vector3();
+  function emitTrails() {
+    const walkers = [];
+    if (local && !local.inVehicle) walkers.push(['me', local.look, local.position]);
+    for (const [id, r] of remotes) if (r.look?.trail && r.mesh.visible && !r.inVehicle && !r.isNpc) walkers.push([id, r.look, r.mesh.position]);
+    for (const [id, look, pos] of walkers) {
+      const kind = TRAILS[look?.trail]?.id;
+      if (!kind || kind === 'none') { trailLast.delete(id); continue; }
+      if (local && id !== 'me' && pos.distanceTo(local.position) > 60) continue; // too far to see
+      const last = trailLast.get(id);
+      if (!last) { trailLast.set(id, { x: pos.x, z: pos.z }); continue; }
+      if (Math.hypot(pos.x - last.x, pos.z - last.z) < 0.55) continue;
+      last.x = pos.x; last.z = pos.z;
+      impacts.trail(trailPos.set(pos.x, pos.y - 0.7, pos.z), kind);
     }
   }
 

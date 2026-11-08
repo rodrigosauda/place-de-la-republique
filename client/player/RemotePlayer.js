@@ -20,6 +20,7 @@ export class RemotePlayer {
     this.isNpc = isNpc;
     this.slogan = slogan;
     this.lookKey = JSON.stringify(look);
+    this.look = look;
     this.scene = scene;
     this.physics = physics;
     this.id = id;
@@ -89,6 +90,7 @@ export class RemotePlayer {
     const key = JSON.stringify(look);
     if (key === this.lookKey) return;
     this.lookKey = key;
+    this.look = look;
     const old = this.mesh;
     this.mesh = createPlayerMesh(this.name, this.faction, false, this.slogan, this.isNpc, look, this.badge, this.role);
     this.mesh.position.copy(old.position);

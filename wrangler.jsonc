@@ -21,13 +21,15 @@
     "not_found_handling": "single-page-application",
     // IMPORTANT: requests to /ws must reach our Worker code first,
     // otherwise the SPA fallback would answer them with index.html.
-    "run_worker_first": ["/ws", "/stats", "/last", "/online"]
+    "run_worker_first": ["/ws", "/stats", "/last", "/online", "/shop/*"]
   },
 
   // The Durable Object that runs the multiplayer room.
   "durable_objects": {
     "bindings": [
-      { "name": "GAME_ROOM", "class_name": "GameRoom" }
+      { "name": "GAME_ROOM", "class_name": "GameRoom" },
+      // One tiny Durable Object per wallet code: remembers the premium items that code owns.
+      { "name": "WALLET", "class_name": "Wallet" }
     ]
   },
 
@@ -35,8 +37,13 @@
   // "new_sqlite_classes" = SQLite-backed Durable Objects, which are the ones allowed on the FREE plan.
   // Never edit a migration that was already deployed — add a new one with a new tag instead.
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["GameRoom"] }
+    { "tag": "v1", "new_sqlite_classes": ["GameRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["Wallet"] }
   ],
+
+  // 'test' = the shop checkout is FAKE (nothing is charged, items are granted at once).
+  // Switch to 'live' only after a real payment provider is wired up in worker/shop.js.
+  "vars": { "PAYMENT_MODE": "test" },
 
   // Shows console.log output of the deployed Worker in the Cloudflare dashboard.
   "observability": { "enabled": true }

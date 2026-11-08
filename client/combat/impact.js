@@ -55,12 +55,34 @@ export function createImpacts(scene) {
     }
   }
 
+  // Footstep trails (premium): one or two little floating bits at a player's feet.
+  const TRAIL_COLORS = {
+    confetti: [0xff4d6d, 0xffd23f, 0x3bceac, 0x4d9de0, 0xe15554],
+    feathers: [0xffffff, 0xfff2a8, 0xfffbe0],
+    tricolor: [0x1f5fd1, 0xffffff, 0xef4135],
+    gold: [0xffd700, 0xffec8b, 0xffc300],
+  };
+  function trail(pos, kind) {
+    const colors = TRAIL_COLORS[kind];
+    if (!colors) return;
+    for (let k = 0; k < 2 && free.length; k++) {
+      const i = free.pop();
+      const a = Math.random() * Math.PI * 2;
+      const sp = 0.25 + Math.random() * 0.5;
+      mesh.setColorAt(i, col.set(colors[Math.floor(Math.random() * colors.length)]));
+      const floaty = kind === 'feathers' || kind === 'gold';
+      parts.push({ i, x: pos.x + (Math.random() - 0.5) * 0.4, y: pos.y, z: pos.z + (Math.random() - 0.5) * 0.4, vx: Math.cos(a) * sp, vy: 0.6 + Math.random() * 1.1,
+        vz: Math.sin(a) * sp, life: 0, max: 0.8 + Math.random() * 0.6, size: kind === 'gold' ? 0.4 + Math.random() * 0.3 : 0.55 + Math.random() * 0.5, spin: 2 + Math.random() * 6, g: floaty ? 1.5 : 4 });
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }
+
   function update(dt) {
     for (let k = parts.length - 1; k >= 0; k--) {
       const a = parts[k];
       a.life += dt;
       if (a.life >= a.max) { mesh.setMatrixAt(a.i, hidden); free.push(a.i); parts.splice(k, 1); continue; }
-      a.vy -= 9 * dt;
+      a.vy -= (a.g ?? 9) * dt;
       a.x += a.vx * dt; a.y = Math.max(0.05, a.y + a.vy * dt); a.z += a.vz * dt;
       const f = 1 - a.life / a.max;
       e.set(a.spin * a.life, a.spin * a.life * 1.3, 0);
@@ -77,5 +99,5 @@ export function createImpacts(scene) {
       r.material.opacity = 0.7 * (1 - t);
     }
   }
-  return { burst, update };
+  return { burst, trail, update };
 }

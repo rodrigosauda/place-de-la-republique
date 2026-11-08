@@ -413,9 +413,9 @@ canvas { display: block; touch-action: none; }
   background: #f1f3f8; color: #1b2d63; border: 1px solid #d4daec;
 }
 .menu-card .slogan-presets .chip:hover { background: #e2e8fb; }
-.menu-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-.menu-card .menu-actions .watch { background: #eef1f7; color: #1b2d63; border: 1px solid #d4daec; font-size: 14px; padding: 12px 14px; }
-.menu-card .menu-actions .watch:hover { background: #e2e8fb; }
+.menu-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }
+.menu-card .menu-actions .watch, .menu-card .menu-actions .menu-shop { background: #eef1f7; color: #1b2d63; border: 1px solid #d4daec; font-size: 14px; padding: 12px 14px; }
+.menu-card .menu-actions .watch:hover, .menu-card .menu-actions .menu-shop:hover { background: #e2e8fb; }
 
 /* ---------- missions, level, badges ---------- */
 .mission-tracker {
@@ -466,3 +466,45 @@ canvas { display: block; touch-action: none; }
 }
 .spectator-bar .keys { font-weight: 500; opacity: 0.75; font-size: 12px; }
 .spectator-bar button { padding: 7px 12px; border: 0; border-radius: 8px; background: #f7d417; color: #111; font-weight: 800; cursor: pointer; }
+
+/* ---------- name flair (premium) ---------- */
+.name-label.flair-star { border-color: #f7d417; }
+.name-label.flair-tricolor { background: linear-gradient(90deg, #1f3f9a, #f4f4f4 50%, #c8202f); color: #101828; text-shadow: 0 0 3px #fff; }
+.name-label.flair-founder { background: linear-gradient(180deg, #4a3a10, #251c05); color: #ffd84a; border-color: #ffd84a; text-shadow: 0 0 6px rgba(255, 216, 74, 0.7); }
+
+/* ---------- outfit editor: locked (try-on) items ---------- */
+.outfit-item .premium.own { background: #2f9e55; color: #fff; }
+.outfit-locked {
+  flex: 1 1 100%; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 10px; border-radius: 10px; background: #fff7dc; border: 1px solid #e6c964; font-size: 12px; color: #4b3b05;
+}
+.outfit-locked span { flex: 1 1 200px; }
+.outfit-locked button { margin: 0; padding: 7px 12px; border: 0; border-radius: 8px; background: #d4af37; color: #2c2100; font-weight: 800; cursor: pointer; }
+
+/* ---------- shop ---------- */
+.shop-overlay { position: fixed; inset: 0; z-index: 60; display: flex; padding: 16px; background: rgba(0, 0, 0, 0.55); overflow-y: auto; }
+.shop-card {
+  margin: auto; width: 100%; max-width: 760px; max-height: calc(100vh - 32px); display: flex; flex-direction: column;
+  background: #fff; color: #1d2230; border-radius: 14px; padding: 16px 18px; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+}
+.shop-head { display: flex; align-items: center; justify-content: space-between; }
+.shop-head h2 { margin: 0; font-size: 22px; }
+.shop-close { border: 0; background: #eceef4; border-radius: 8px; width: 32px; height: 32px; font-size: 15px; cursor: pointer; }
+.shop-test { margin: 8px 0 0; padding: 6px 10px; border-radius: 8px; background: #fff3cd; color: #5a4300; font-size: 12px; font-weight: 600; }
+.shop-fair { margin: 6px 0 0; font-size: 12px; color: #55607a; }
+.shop-status { margin: 8px 0 0; padding: 6px 10px; border-radius: 8px; background: #e6f4ea; color: #14532d; font-size: 13px; font-weight: 600; }
+.shop-scroll { overflow-y: auto; margin-top: 8px; padding-right: 4px; min-height: 120px; }
+.shop-scroll h3 { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: #55607a; }
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.shop-item { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 2px solid #e1e5ee; border-radius: 10px; background: #fafbfe; }
+.shop-item.hl { border-color: #d4af37; background: #fff9e4; }
+.shop-name { font-weight: 700; font-size: 14px; }
+.shop-sub { font-size: 11px; color: #667088; min-height: 14px; }
+.shop-item button { margin-top: auto; padding: 8px; border: 0; border-radius: 8px; background: #002395; color: #fff; font-weight: 800; cursor: pointer; }
+.shop-item button.confirm { background: #c8202f; }
+.shop-item button.owned { background: #e2f3e8; color: #1c6b3a; cursor: default; }
+.shop-wallet { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e1e5ee; font-size: 12px; display: flex; flex-direction: column; gap: 8px; }
+.shop-wallet code { margin: 0 8px; padding: 3px 7px; border-radius: 6px; background: #eef1f7; font-size: 13px; font-weight: 700; user-select: all; }
+.shop-wallet button { padding: 5px 10px; border: 0; border-radius: 7px; background: #e6e8ee; font-weight: 700; cursor: pointer; }
+.shop-restore { display: flex; gap: 6px; }
+.shop-restore input { flex: 1; padding: 7px 9px; border: 1px solid #ccd2e0; border-radius: 8px; font-size: 13px; }

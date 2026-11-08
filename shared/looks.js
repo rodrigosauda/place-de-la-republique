@@ -7,11 +7,13 @@
 // big sunglasses, checked scarves, masks, backpacks; police in navy with
 // "POLICE" on the back, unit numbers, helmets with visors, gas masks.
 //
-// premium: true  -> will be sold later. While PREMIUM_ENFORCED is false
-//                   everybody can use them (so you see what people like).
+// premium: true  -> sold in the shop (shared/shop.js). `price` is in euro cents (default 99).
+//                   The server only lets you wear it if your wallet owns it (see worker/shop.js).
+//                   Premium items are cosmetic only: never anything that changes strength or fairness.
 // faction: 'g' or 'c' -> only that side can pick it (undefined = both).
 
-export const PREMIUM_ENFORCED = false;
+export const PREMIUM_ENFORCED = true;
+export const DEFAULT_PRICE = 99;
 
 export const BODIES = [
   { id: 'man', label: 'Man' },
@@ -40,7 +42,7 @@ export const TOPS = [
   { id: 'red', label: 'Red', color: '#b3262e' },
   { id: 'green', label: 'Green', color: '#3c6e47' },
   { id: 'denim', label: 'Denim', color: '#4b6e9c' },
-  { id: 'mariniere', label: 'Breton stripes', color: '#ecebe6', stripes: '#22304f', premium: true },
+  { id: 'mariniere', label: 'Breton stripes', color: '#ecebe6', stripes: '#22304f', premium: true, price: 149 },
 ];
 
 export const PANTS = [
@@ -61,7 +63,7 @@ export const HATS = [
   { id: 'tricolor', label: 'Tricolour beanie', faction: 'g', premium: true },
   { id: 'helmet', label: 'Helmet', faction: 'c' },
   { id: 'helmetUp', label: 'Helmet, visor up', faction: 'c' },
-  { id: 'goldHelmet', label: 'Gold helmet', faction: 'c', premium: true },
+  { id: 'goldHelmet', label: 'Gold helmet', faction: 'c', premium: true, price: 199 },
 ];
 
 export const FACES = [
@@ -77,19 +79,38 @@ export const FACES = [
 export const BACKS = [
   { id: 'none', label: 'None' },
   { id: 'backpack', label: 'Backpack' },
-  { id: 'umbrella', label: 'Umbrella (back)', faction: 'g', premium: true },
-  { id: 'cape', label: 'Tricolour cape', premium: true },
+  { id: 'umbrella', label: 'Umbrella (back)', faction: 'g', premium: true, price: 149 },
+  { id: 'cape', label: 'Tricolour cape', premium: true, price: 199 },
 ];
 
 export const PLACARDS = [
   { id: 'cardboard', label: 'Cardboard', board: '#c9a46b', ink: '#1a1a1a', frame: '#9c7a45' },
   { id: 'white', label: 'White', board: '#f4f1ea', ink: '#c8102e', frame: '#c8102e' },
   { id: 'gold', label: 'Gold', board: '#e8c25a', ink: '#3a2a00', frame: '#a37b12', premium: true },
+  { id: 'neon', label: 'Neon', board: '#19e6c1', ink: '#08243a', frame: '#0b8f78', premium: true },
+  { id: 'night', label: 'Night', board: '#1b1d2a', ink: '#f2d36b', frame: '#f2d36b', premium: true },
+];
+
+// Footstep trail: little coloured bits that follow you while you walk (everyone sees it).
+export const TRAILS = [
+  { id: 'none', label: 'None' },
+  { id: 'confetti', label: 'Confetti', premium: true, price: 149 },
+  { id: 'feathers', label: 'Rubber-chicken feathers', premium: true, price: 99 },
+  { id: 'tricolor', label: 'Blue-white-red sparks', premium: true, price: 199 },
+  { id: 'gold', label: 'Gold dust', premium: true, price: 199 },
+];
+
+// Name flair: how your name looks above your head.
+export const FLAIRS = [
+  { id: 'none', label: 'None' },
+  { id: 'star', label: 'Star', premium: true, price: 99 },
+  { id: 'tricolor', label: 'Blue-white-red name', premium: true, price: 149 },
+  { id: 'founder', label: 'Founder (gold name)', premium: true, price: 299 },
 ];
 
 // Order of the look array sent over the network.
-export const LOOK_SLOTS = ['body', 'skin', 'hair', 'hairColor', 'top', 'pants', 'hat', 'face', 'back', 'placard', 'number'];
-const CATALOG = { body: BODIES, skin: SKINS, hair: HAIRS, hairColor: HAIR_COLORS, top: TOPS, pants: PANTS, hat: HATS, face: FACES, back: BACKS, placard: PLACARDS };
+export const LOOK_SLOTS = ['body', 'skin', 'hair', 'hairColor', 'top', 'pants', 'hat', 'face', 'back', 'placard', 'number', 'trail', 'flair'];
+const CATALOG = { body: BODIES, skin: SKINS, hair: HAIRS, hairColor: HAIR_COLORS, top: TOPS, pants: PANTS, hat: HATS, face: FACES, back: BACKS, placard: PLACARDS, trail: TRAILS, flair: FLAIRS };
 
 // How well your face item protects you from tear gas: 0 = not at all, 1 = fully.
 export function gasProtection(look) {
@@ -101,8 +122,8 @@ export function gasProtection(look) {
 
 export function defaultLook(faction) {
   return faction === 'c'
-    ? { body: 0, skin: 1, hair: 0, hairColor: 0, top: 1, pants: 1, hat: 7, face: 0, back: 0, placard: 0, number: 212 }
-    : { body: 0, skin: 1, hair: 0, hairColor: 1, top: 4, pants: 0, hat: 0, face: 0, back: 0, placard: 0, number: 0 };
+    ? { body: 0, skin: 1, hair: 0, hairColor: 0, top: 1, pants: 1, hat: 7, face: 0, back: 0, placard: 0, number: 212, trail: 0, flair: 0 }
+    : { body: 0, skin: 1, hair: 0, hairColor: 1, top: 4, pants: 0, hat: 0, face: 0, back: 0, placard: 0, number: 0, trail: 0, flair: 0 };
 }
 
 // A varied, free (non-premium) outfit for background extras. `seed` makes it repeatable.
@@ -170,3 +191,12 @@ export function isPremium(slot, index) {
 }
 
 export const CATALOG_FOR_EDITOR = CATALOG;
+
+// ---- shop helpers -------------------------------------------------------------------------
+// Every premium catalog entry has an item key "<slot>:<id>", e.g. "hat:phrygian".
+export const SHOP_SLOTS = ['hat', 'face', 'back', 'top', 'placard', 'trail', 'flair'];
+export const itemKey = (slot, index) => {
+  const item = CATALOG[slot]?.[index];
+  return item && typeof item === 'object' && item.premium ? `${slot}:${item.id}` : null; // null = free item
+};
+export const priceOfItem = (item) => item.price ?? DEFAULT_PRICE;

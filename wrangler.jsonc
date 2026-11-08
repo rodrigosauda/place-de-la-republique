@@ -1,0 +1,43 @@
+// wrangler.jsonc — Cloudflare configuration for the whole game (ONE Worker project).
+// Docs: https://developers.cloudflare.com/workers/wrangler/configuration/
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // Name of your Worker. Your game will live at https://<name>.<your-subdomain>.workers.dev
+  "name": "place-de-la-republique",
+
+  // The Worker entry file (routes /ws to the Durable Object, everything else to static assets).
+  "main": "worker/index.js",
+
+  // Pins the Workers runtime behaviour. Keep it fixed; bump it deliberately later.
+  "compatibility_date": "2025-09-01",
+
+  // Static assets = the Vite build output (index.html, JS bundle, ...).
+  "assets": {
+    "directory": "./dist",
+    // Lets the Worker call env.ASSETS.fetch(request) if it wants to.
+    "binding": "ASSETS",
+    // Unknown paths fall back to index.html (handy if you add client-side routes later).
+    "not_found_handling": "single-page-application",
+    // IMPORTANT: requests to /ws must reach our Worker code first,
+    // otherwise the SPA fallback would answer them with index.html.
+    "run_worker_first": ["/ws", "/stats"]
+  },
+
+  // The Durable Object that runs the multiplayer room.
+  "durable_objects": {
+    "bindings": [
+      { "name": "GAME_ROOM", "class_name": "GameRoom" }
+    ]
+  },
+
+  // Migrations tell Cloudflare which Durable Object classes exist.
+  // "new_sqlite_classes" = SQLite-backed Durable Objects, which are the ones allowed on the FREE plan.
+  // Never edit a migration that was already deployed — add a new one with a new tag instead.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameRoom"] }
+  ],
+
+  // Shows console.log output of the deployed Worker in the Cloudflare dashboard.
+  "observability": { "enabled": true }
+}

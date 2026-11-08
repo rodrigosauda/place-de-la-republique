@@ -1,0 +1,23 @@
+{
+  "name": "place-de-la-republique",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n vite,worker -c yellow,blue \"npm:dev:client\" \"npm:dev:worker\"",
+    "dev:client": "vite",
+    "dev:worker": "node scripts/ensure-dist.js && wrangler dev --port 8787",
+    "build": "vite build",
+    "preview": "vite build && wrangler dev --port 8787",
+    "deploy": "vite build && wrangler deploy"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.7",
+    "vite": "^8.3.6",
+    "wrangler": "^4.158.0"
+  }
+}

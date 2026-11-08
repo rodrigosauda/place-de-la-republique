@@ -271,11 +271,11 @@ or fights. Rules:
 
 ## Real recordings
 
-The crowd murmur, the chanting, the march drums, the helicopter and the curfew siren are real CC0 field recordings
-(a Paris demonstration, a Buenos Aires march, Paris helicopters and sirens), cut into seamless loops in `public/audio/`
-(credits in `public/audio/CREDITS.md`, about 2.8 MB, loaded in the background after the first click). Hits, whooshes,
-drums hits, whistles and the rest stay synthesised. If a file fails to load, the synthesised version plays instead.
-Browser console: `game.sfx.debugState()` shows what is loaded and each layer's volume.
+The helicopter and the curfew siren are real CC0 field recordings (Paris), cut into seamless loops in `public/audio/`
+(credits in `public/audio/CREDITS.md`, about 0.7 MB, loaded in the background after the first click). Hits, whooshes,
+drum hits, whistles and the rest stay synthesised, and if a file fails to load the synthesised version plays instead.
+There is **no crowd murmur or chanting sound** on purpose (players found it unpleasant; an earlier version used
+recorded crowd loops). Browser console: `game.sfx.debugState()` shows what is loaded and each layer's volume.
 
 ## Feel: hit-stop, debris, crowd, role gear
 

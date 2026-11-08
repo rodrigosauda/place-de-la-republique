@@ -13,8 +13,13 @@
 import * as THREE from 'three';
 
 const W = 16, H = 9;                                // metres
-const POSITION = new THREE.Vector3(-51.2, 12.6, 61.3); // real building on the south side of the square
-const FACING = new THREE.Vector3(0, 0, -1);            // the banner faces the square (north)
+// On the long south facade (Café République block), facing the square. Chosen by a line-of-sight check
+// against the real tree positions: from about 70% of the square you can see it, while the old spot at
+// x = -51 was hidden behind the plane trees from everywhere. Keep it low on the wall (its top stays under
+// the cornice at about 20 m) and keep the centre near x = 20.
+const WALL_OFFSET = 0.8;                               // metres in front of the wall (brackets bridge the gap)
+const POSITION = new THREE.Vector3(19.7, 10.5, 57.9 - WALL_OFFSET);
+const FACING = new THREE.Vector3(-0.0475, 0, -1).normalize(); // the banner faces the square (north)
 const ROTATE_MS = 30000;
 const SEEN_AFTER_S = 2;                             // on screen for 2 s = 1 impression
 
@@ -46,6 +51,12 @@ export function createAdBanner(scene, { onSeen }) {
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.15, 0.3), metal);
     lamp.position.set(x, H / 2 + 0.25, 1.2);
     group.add(arm, lamp);
+  }
+  // Brackets holding the wrap off the wall (local -z is towards the wall).
+  for (const x of [-W / 2, 0, W / 2]) for (const y of [-H / 2, H / 2]) {
+    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, WALL_OFFSET + 0.1), metal);
+    bracket.position.set(x, y, -WALL_OFFSET / 2);
+    group.add(bracket);
   }
   scene.add(group);
 

@@ -1,9 +1,11 @@
 // client/audio/sfx.js
 // Sound effects made with the Web Audio API. Short effects (hits, whooshes, drums...) are synthesised:
 // a few oscillators / noise bursts shaped with volume envelopes.
-// The big background layers (crowd, chanting, march drums, helicopter, siren) are real CC0 recordings
-// in public/audio/ (credits in public/audio/CREDITS.md). They load in the background after the first
-// click; until they arrive, or if they fail to load, the synthesised versions play instead.
+// The helicopter and the curfew siren are real CC0 recordings in public/audio/ (credits in
+// public/audio/CREDITS.md). They load in the background after the first click; until they arrive, or if
+// they fail to load, synthesised versions play instead.
+// There is deliberately NO crowd murmur or chanting sound: players found it unpleasant (it can come back
+// by re-adding a layer in `ambience`).
 // Browsers only allow audio after a click, so call `sfx.unlock()` from the Play button.
 // Press M in game to mute/unmute.
 
@@ -18,7 +20,7 @@ let rainRumble = null;
 let nextDrip = 0;
 
 // ---- recorded loops -------------------------------------------------------------------------
-const SAMPLE_FILES = ['murmur', 'chant', 'drums', 'heli', 'siren'];
+const SAMPLE_FILES = ['heli', 'siren'];
 const buffers = {};      // name -> AudioBuffer
 let samplesState = 'idle'; // idle | loading | done
 let layers = null;       // name -> GainNode (looping layers, started once)
@@ -37,7 +39,7 @@ function loadSamples() {
 
 function startLayers() {
   layers = {};
-  for (const name of ['murmur', 'chant', 'drums', 'heli']) {
+  for (const name of ['heli']) {
     if (!buffers[name]) continue;
     const src = ctx.createBufferSource(); src.buffer = buffers[name]; src.loop = true;
     const g = ctx.createGain(); g.gain.value = 0;
@@ -158,8 +160,8 @@ export const sfx = {
   drum(v = 1, big = false) { if (ready() && v > 0) { tone('sine', big ? 120 : 200, big ? 45 : 90, big ? 0.35 : 0.15, (big ? 0.5 : 0.25) * v); if (!big) noise(0.08, 0.15 * v, 2500, 1200); } },
 
   // Continuous background sounds. Levels 0..1, called every frame:
-  //   murmur  crowd talking        heli  helicopter overhead
-  //   chant   the crowd chanting together (rhythmic "oh-oh-oh")      siren  distant police sirens
+  //   heli  helicopter overhead        siren  distant police sirens
+  // (`murmur` and `chant` are still passed by main.js but ignored: no crowd sound.)
   ambience(murmur, heli, chant = 0, siren = 0) {
     if (!ctx || muted) {
       if (ambient) { for (const g of Object.values(ambient)) g.gain.value = 0; }
@@ -175,51 +177,27 @@ export const sfx = {
         src.connect(f).connect(g); src.start();
         return { f, g };
       };
-      const m = loop('bandpass', 500, 0.6);
-      m.g.connect(master);
-      // Murmur breathes: the filter drifts slowly so it never sounds like a flat hiss.
-      const drift = ctx.createOscillator(); drift.frequency.value = 0.15;
-      const driftDepth = ctx.createGain(); driftDepth.gain.value = 180;
-      drift.connect(driftDepth).connect(m.f.frequency); drift.start();
-      // Helicopter: low rumble whose volume flutters ~12 times a second (the rotor).
+      // Helicopter (synthesised fallback): low rumble whose volume flutters ~12 times a second (the rotor).
       const h = loop('lowpass', 160, 1);
       const rotor = ctx.createGain(); rotor.gain.value = 0.5;
       const lfo = ctx.createOscillator(); lfo.frequency.value = 12;
       const depth = ctx.createGain(); depth.gain.value = 0.5;
       lfo.connect(depth).connect(rotor.gain); lfo.start();
       h.g.connect(rotor).connect(master);
-      // Chant: two "voices" through a vowel-like filter, loudness pulsing at 2 beats per second.
-      const chantGain = ctx.createGain(); chantGain.gain.value = 0;
-      const beat = ctx.createGain(); beat.gain.value = 0.5;
-      const beatLfo = ctx.createOscillator(); beatLfo.type = 'square'; beatLfo.frequency.value = 2.2;
-      const beatDepth = ctx.createGain(); beatDepth.gain.value = 0.45;
-      beatLfo.connect(beatDepth).connect(beat.gain); beatLfo.start();
-      const vowel = ctx.createBiquadFilter(); vowel.type = 'bandpass'; vowel.frequency.value = 700; vowel.Q.value = 1.4;
-      for (const f of [147, 185, 220]) {
-        const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = (Math.random() - 0.5) * 30;
-        o.connect(vowel); o.start();
-      }
-      vowel.connect(beat).connect(chantGain).connect(master);
       // Distant siren: "pin-pon" through a low-pass so it sounds streets away.
       const sirenGain = ctx.createGain(); sirenGain.gain.value = 0;
       const so = ctx.createOscillator(); so.type = 'square'; so.frequency.value = 580;
       const sf = ctx.createBiquadFilter(); sf.type = 'lowpass'; sf.frequency.value = 1100;
       so.connect(sf).connect(sirenGain).connect(master); so.start();
       setInterval(() => { if (sirenGain.gain.value > 0.001) so.frequency.setValueAtTime(so.frequency.value > 500 ? 435 : 580, ctx.currentTime); }, 520);
-      ambient = { m: m.g, h: h.g, c: chantGain, s: sirenGain };
+      ambient = { h: h.g, s: sirenGain };
     }
     const t = ctx.currentTime;
-    // Recorded layers replace the synthesised crowd, chant and helicopter when they are available.
-    const fx = (name, synthGain, synthLevel, level, recGain, tc) => {
-      if (layers?.[name]) {
-        synthGain.gain.setTargetAtTime(0, t, 0.3);
-        layers[name].gain.setTargetAtTime(recGain * level, t, tc);
-      } else synthGain.gain.setTargetAtTime(synthLevel * level, t, tc);
-    };
-    fx('murmur', ambient.m, 0.12, murmur, 0.4, 0.5);
-    fx('heli', ambient.h, 0.5, heli, 0.45, 0.5);
-    fx('chant', ambient.c, 0.09, chant, 0.45, 0.6);
-    if (layers?.drums) layers.drums.gain.setTargetAtTime(0.3 * chant, t, 0.8);
+    // The recorded helicopter replaces the synthesised one when it is available.
+    if (layers?.heli) {
+      ambient.h.gain.setTargetAtTime(0, t, 0.3);
+      layers.heli.gain.setTargetAtTime(0.45 * heli, t, 0.5);
+    } else ambient.h.gain.setTargetAtTime(0.5 * heli, t, 0.5);
     ambient.s.gain.setTargetAtTime(0.035 * siren, t, 1);
   },
 

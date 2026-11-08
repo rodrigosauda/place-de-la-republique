@@ -906,7 +906,7 @@ async function start() {
     local.speedFactor = 1 - 0.55 * gasLevel;
     if (gasLevel > 0.3 && now > coughAt) { coughAt = now + 1200 + Math.random() * 900; sfx.cough(Math.min(1, gasLevel + 0.3)); }
 
-    // Ambient sound: crowd murmur and drums near the crowd, the helicopter overhead.
+    // Ambient sound: drum hits near the crowd, the helicopter overhead, distant sirens (no crowd murmur or chanting).
     const s = riot.state;
     const crowdDist = s.crowdCount ? local.position.distanceTo(s.centroid) : 999;
     const near = Math.max(0, 1 - crowdDist / 70);

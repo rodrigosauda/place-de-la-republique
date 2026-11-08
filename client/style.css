@@ -360,3 +360,44 @@ canvas { display: block; touch-action: none; }
 @media (min-width: 701px) {
   .hud-objective { top: 190px; } /* the clock panel is taller now (scenario + opinion bar) */
 }
+
+/* ---------- first steps (tutorial) ---------- */
+.tutorial {
+  position: fixed; left: 50%; top: 112px; transform: translateX(-50%); z-index: 4; max-width: min(460px, 92vw);
+  padding: 10px 14px; border-radius: 12px; background: rgba(0, 20, 80, 0.88); color: #fff;
+  font: 600 14px/1.4 system-ui, sans-serif; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4); border: 2px solid #f7d417;
+  animation: tut-in 0.3s ease-out;
+}
+.tutorial.last { border-color: #7dff9a; }
+.tutorial .tut-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px; color: #f7d417; text-transform: uppercase; }
+.tutorial .tut-skip { color: #bcd; cursor: pointer; font-weight: 600; }
+@keyframes tut-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ---------- floating public-opinion numbers ---------- */
+.op-pops { position: fixed; right: 270px; top: 62px; z-index: 3; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: none; }
+.op-pop { font: 800 15px/1 system-ui, sans-serif; padding: 4px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.6); text-shadow: 0 1px 2px #000; animation: op-pop 2.2s ease-out forwards; }
+.op-pop.up { color: #ffe14d; }
+.op-pop.down { color: #9fb8ff; }
+@keyframes op-pop { 0% { opacity: 0; transform: translateY(8px) scale(0.8); } 12% { opacity: 1; transform: translateY(0) scale(1.15); } 25% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
+@media (max-width: 700px) { .op-pops { right: 12px; top: 175px; } }
+
+/* ---------- camera flash (journalist) ---------- */
+.hud-shutter { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 5; }
+.hud-shutter.on { animation: shutter 0.35s ease-out; }
+@keyframes shutter { from { opacity: 0.8; } to { opacity: 0; } }
+
+/* ---------- today's event (under the goal) ---------- */
+.hud-objective .ev-line { margin-top: 6px; padding-top: 5px; border-top: 1px solid rgba(255, 255, 255, 0.25); }
+.hud-objective .label.ev { background: #66e0ff; }
+
+/* ---------- roles and profile in the start menu ---------- */
+.roles { display: flex; flex-wrap: wrap; gap: 6px; }
+.menu-card .roles .role-btn { margin: 0; padding: 7px 10px; font-size: 13px; background: #fff; color: #222; border: 2px solid #ddd; border-radius: 10px; }
+.menu-card .roles .role-btn:hover { background: #f4f6ff; }
+.menu-card .roles .role-btn.on { border-color: #002395; background: #eef2ff; color: #002395; }
+.role-blurb { margin: 0; font-size: 12px; color: #666; min-height: 2.4em; line-height: 1.3; }
+.menu-card .lastday, .menu-card .streak { margin: 0; padding: 7px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.35; }
+.menu-card .lastday { background: #e8eefc; color: #1b2d63; }
+.menu-card .streak { background: #fff3c4; color: #5a4600; font-weight: 600; }
+.summary .award.mine { font-weight: 800; color: #002395; }
+.outfit-options { max-height: min(340px, 52vh); }

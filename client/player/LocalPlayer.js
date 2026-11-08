@@ -226,6 +226,14 @@ export class LocalPlayer {
   }
 
   // Called when the KO timer is over: stand up at the spawn point.
+  // A medic got to us: stand up right where we are (no trip back to base).
+  reviveInPlace(hp = MAX_HP) {
+    this.hp = hp;
+    this.koUntil = 0;
+    this.knock.x = this.knock.z = 0;
+    this.fx.setKO(false);
+  }
+
   respawn() {
     this.hp = MAX_HP;
     this.koUntil = 0;

@@ -82,6 +82,11 @@ export function setupAtmosphere(renderer, scene, camera) {
       renderer.toneMappingExposure = (0.55 + 0.25 * daylight) * (1 - 0.1 * overcast);
       if (bloom) bloom.strength = 0.55 * (1 - daylight); // glow only after sunset (lamps, windows)
     },
+    // Adaptive resolution: main.js lowers / raises this to hold the frame rate.
+    setPixelRatio(r) {
+      renderer.setPixelRatio(r);
+      composer?.setPixelRatio(Math.min(r, 1.5));
+    },
     render(cam) {
       if (composer) composer.render();
       else renderer.render(scene, cam);

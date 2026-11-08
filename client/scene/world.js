@@ -186,7 +186,19 @@ export function buildWorld(scene, physics) {
   // Posts the background crowd walks around: tree trunks, lamp posts, benches.
   const obstacles = [...trees.map(([x, z]) => [x, z, 0.4]), ...lamps.map(([x, z]) => [x, z, 0.15])];
   each(MAP.benches, 2, (x, z) => obstacles.push([x, z, 1.1]));
-  return { nightMaterials, lamps, obstacles };
+  // Rain: the ground gets darker and shinier (and back again).
+  const wetList = [ground.material, roadMat, squareMat].map((m) => ({ m, rough: m.roughness, color: m.color.clone() }));
+  let wetNow = -1;
+  const setWet = (w) => {
+    w = Math.round(w * 50) / 50;
+    if (w === wetNow) return;
+    wetNow = w;
+    for (const { m, rough, color } of wetList) {
+      m.roughness = rough * (1 - 0.6 * w);
+      m.color.copy(color).multiplyScalar(1 - 0.28 * w);
+    }
+  };
+  return { nightMaterials, lamps, obstacles, setWet };
 }
 
 // Low stone kerbs along the edges of the roads (visual only; you can step over them).

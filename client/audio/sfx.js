@@ -11,6 +11,8 @@ let muted = false;
 let sprayNode = null;
 let ambient = null;
 let rainNode = null;
+let rainRumble = null;
+let nextDrip = 0;
 
 function init() {
   if (ctx) return;
@@ -91,11 +93,32 @@ export const sfx = {
   shutter() { if (ready()) { noise(0.04, 0.4, 4000, 3000, 'highpass'); setTimeout(() => ready() && noise(0.05, 0.3, 3000, 2500, 'highpass'), 70); } },
   gasPop(v = 1) { if (ready() && v > 0) { tone('sine', 180, 60, 0.15, 0.4 * v); noise(1.2, 0.25 * v, 3000, 1500, 'highpass'); } },
   whistle(v = 1) { if (ready() && v > 0) { const f = 2600 + Math.random() * 600; tone('sine', f, f * 0.98, 0.25, 0.08 * v); setTimeout(() => ready() && tone('sine', f, f, 0.4, 0.08 * v), 300); } },
+  // UI feedback for public opinion: a soft tick for every change, a chime when a threshold is crossed.
+  opinionTick(up) { if (ready()) tone('sine', up ? 660 : 520, up ? 880 : 380, 0.12, 0.1); },
+  threshold(up) {
+    if (!ready()) return;
+    const notes = up ? [523, 659, 784] : [440, 349, 262];
+    notes.forEach((f, i) => setTimeout(() => ready() && tone('triangle', f, f, 0.3, 0.16), i * 110));
+  },
+  ding() { if (ready()) { tone('sine', 880, 880, 0.18, 0.14); setTimeout(() => ready() && tone('sine', 1320, 1320, 0.28, 0.12), 110); } },
+  heal(v = 1) { if (ready() && v > 0) [660, 880, 1100].forEach((f, i) => setTimeout(() => ready() && tone('sine', f, f * 1.02, 0.25, 0.14 * v), i * 90)); },
+  noItem() { if (ready()) tone('square', 200, 150, 0.12, 0.06); },
+  // A short drum phrase: boom - ta - boom.
+  drumPhrase(v = 1) {
+    if (!ready() || v <= 0) return;
+    this.drum(v, true);
+    setTimeout(() => this.drum(v * 0.8, false), 170);
+    setTimeout(() => this.drum(v * 0.8, false), 340);
+    setTimeout(() => this.drum(v, true), 520);
+  },
+
   drum(v = 1, big = false) { if (ready() && v > 0) { tone('sine', big ? 120 : 200, big ? 45 : 90, big ? 0.35 : 0.15, (big ? 0.5 : 0.25) * v); if (!big) noise(0.08, 0.15 * v, 2500, 1200); } },
 
-  // Continuous background sounds (crowd murmur, helicopter). Levels 0..1, called every frame.
-  ambience(murmur, heli) {
-    if (!ctx || muted) { if (ambient) { ambient.m.gain.value = 0; ambient.h.gain.value = 0; } return; }
+  // Continuous background sounds. Levels 0..1, called every frame:
+  //   murmur  crowd talking        heli  helicopter overhead
+  //   chant   the crowd chanting together (rhythmic "oh-oh-oh")      siren  distant police sirens
+  ambience(murmur, heli, chant = 0, siren = 0) {
+    if (!ctx || muted) { if (ambient) { for (const g of Object.values(ambient)) g.gain.value = 0; } return; }
     if (!ambient) {
       const loop = (type, freq, q) => {
         const src = ctx.createBufferSource(); src.buffer = noiseBuffer; src.loop = true;
@@ -106,6 +129,10 @@ export const sfx = {
       };
       const m = loop('bandpass', 500, 0.6);
       m.g.connect(master);
+      // Murmur breathes: the filter drifts slowly so it never sounds like a flat hiss.
+      const drift = ctx.createOscillator(); drift.frequency.value = 0.15;
+      const driftDepth = ctx.createGain(); driftDepth.gain.value = 180;
+      drift.connect(driftDepth).connect(m.f.frequency); drift.start();
       // Helicopter: low rumble whose volume flutters ~12 times a second (the rotor).
       const h = loop('lowpass', 160, 1);
       const rotor = ctx.createGain(); rotor.gain.value = 0.5;
@@ -113,11 +140,31 @@ export const sfx = {
       const depth = ctx.createGain(); depth.gain.value = 0.5;
       lfo.connect(depth).connect(rotor.gain); lfo.start();
       h.g.connect(rotor).connect(master);
-      ambient = { m: m.g, h: h.g };
+      // Chant: two "voices" through a vowel-like filter, loudness pulsing at 2 beats per second.
+      const chantGain = ctx.createGain(); chantGain.gain.value = 0;
+      const beat = ctx.createGain(); beat.gain.value = 0.5;
+      const beatLfo = ctx.createOscillator(); beatLfo.type = 'square'; beatLfo.frequency.value = 2.2;
+      const beatDepth = ctx.createGain(); beatDepth.gain.value = 0.45;
+      beatLfo.connect(beatDepth).connect(beat.gain); beatLfo.start();
+      const vowel = ctx.createBiquadFilter(); vowel.type = 'bandpass'; vowel.frequency.value = 700; vowel.Q.value = 1.4;
+      for (const f of [147, 185, 220]) {
+        const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = (Math.random() - 0.5) * 30;
+        o.connect(vowel); o.start();
+      }
+      vowel.connect(beat).connect(chantGain).connect(master);
+      // Distant siren: "pin-pon" through a low-pass so it sounds streets away.
+      const sirenGain = ctx.createGain(); sirenGain.gain.value = 0;
+      const so = ctx.createOscillator(); so.type = 'square'; so.frequency.value = 580;
+      const sf = ctx.createBiquadFilter(); sf.type = 'lowpass'; sf.frequency.value = 1100;
+      so.connect(sf).connect(sirenGain).connect(master); so.start();
+      setInterval(() => { if (sirenGain.gain.value > 0.001) so.frequency.setValueAtTime(so.frequency.value > 500 ? 435 : 580, ctx.currentTime); }, 520);
+      ambient = { m: m.g, h: h.g, c: chantGain, s: sirenGain };
     }
     const t = ctx.currentTime;
     ambient.m.gain.setTargetAtTime(0.12 * murmur, t, 0.5);
     ambient.h.gain.setTargetAtTime(0.5 * heli, t, 0.5);
+    ambient.c.gain.setTargetAtTime(0.09 * chant, t, 0.6);
+    ambient.s.gain.setTargetAtTime(0.035 * siren, t, 1);
   },
 
   // Steady rain hiss (0..1). Called every frame; silent when the level is 0.
@@ -130,8 +177,21 @@ export const sfx = {
       const g = ctx.createGain(); g.gain.value = 0;
       src.connect(f).connect(g).connect(master); src.start();
       rainNode = g;
+      // A low rumble under the hiss (rain on roofs and the street).
+      const src2 = ctx.createBufferSource(); src2.buffer = noiseBuffer; src2.loop = true; src2.playbackRate.value = 0.7;
+      const f2 = ctx.createBiquadFilter(); f2.type = 'lowpass'; f2.frequency.value = 500;
+      const g2 = ctx.createGain(); g2.gain.value = 0;
+      src2.connect(f2).connect(g2).connect(master); src2.start();
+      rainRumble = g2;
     }
-    rainNode.gain.setTargetAtTime(muted ? 0 : 0.07 * level, ctx.currentTime, 0.6);
+    rainNode.gain.setTargetAtTime(muted ? 0 : 0.09 * level, ctx.currentTime, 0.6);
+    rainRumble.gain.setTargetAtTime(muted ? 0 : 0.05 * level, ctx.currentTime, 0.6);
+    // Drips: tiny random clicks, more of them in heavier rain.
+    const nowMs = performance.now();
+    if (!muted && level > 0.2 && nowMs > nextDrip) {
+      nextDrip = nowMs + 70 + Math.random() * (260 - 180 * level);
+      noise(0.025, 0.05 * level, 3500 + Math.random() * 3000, 2500, 'highpass');
+    }
   },
 
   // French police siren "pin-pon" (curfew starts).

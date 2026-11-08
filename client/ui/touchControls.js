@@ -20,6 +20,7 @@ export function setupTouchControls(input, { onChat }) {
       <button data-key="TouchRun">Run</button>
       <button data-key="KeyC">Dash</button>
       <button data-key="KeyH" data-police hidden>Tear gas</button>
+      <button data-key="KeyR" data-role hidden>Role</button>
       <button data-chat>Chat</button>
     </div>`;
   document.body.appendChild(root);
@@ -70,8 +71,9 @@ export function setupTouchControls(input, { onChat }) {
 
   // The tear-gas button is only for the police.
   return {
-    setFaction(faction) {
+    setFaction(faction, role = '') {
       for (const b of root.querySelectorAll('[data-police]')) b.hidden = faction !== 'c';
+      for (const b of root.querySelectorAll('[data-role]')) b.hidden = !role;
     },
   };
 }

@@ -61,6 +61,7 @@ export const SCENARIOS = [
     blurb: 'A cheerful march in costumes. At the end, a masked group wants a fight.',
     rain: 0, swing: 1.2, lineSpeed: 1.3, gas: 1.3, police: 1,
     calm: { until: 18.5, lineSpeed: 0.5, gas: 0.4 },
+    events: { band: { title: 'Costume parade', g: 'Join the costume parade and dance: the march gains support', news: 'A parade of witches, ghosts and skeletons dances along Boulevard de Magenta.' } },
     news: [
       { at: 6 * 60, text: 'Third wave, 31 October: marchers come in Halloween costumes.' },
       { at: 18 * 60 + 30, text: 'The march is over, but a masked group stays behind and the mood turns.' },
@@ -70,6 +71,7 @@ export const SCENARIOS = [
     id: 'union', date: '5 Nov', title: 'Union strike day',
     blurb: 'Workers, students and retirees fill the boulevards. Calm and loud, and every act counts for more.',
     rain: 0, swing: 1.5, lineSpeed: 0.4, gas: 0.25, police: 0.8,
+    events: { speech: { title: 'Union leaders speak at the monument', news: 'Union leaders speak from the monument steps to a huge crowd.' } },
     news: [
       { at: 6 * 60, text: 'Union strike day, 5 November: the whole country is called to march for wages.' },
       { at: 14 * 60, text: 'Workers, students and retirees march together with drums and whistles.' },
@@ -188,6 +190,42 @@ export const OBJECTIVES = [
     c: 'Curfew: clear the square!',
   },
 ];
+
+// Events: short happenings with a zone on the map (a ring on the ground and on the minimap).
+//   kind 'rally'   -> protesters standing in the zone slowly win public support (the server caps it per day;
+//                     a drummer in the zone makes it stronger, more police than protesters there cancels it)
+//   kind 'cameras' -> live TV: every K.O. inside the zone moves public opinion TWICE as much
+// A scenario can rename an event with `scn.events = { id: { title, news, g, c } }`.
+export const EVENTS = [
+  {
+    id: 'speech', from: 11.5, to: 12.5, kind: 'rally', zone: { x: 0, z: 0, r: 16 },
+    title: 'Open-air speech at the monument',
+    g: 'Gather around the monument and hear the speaker: the crowd wins support',
+    c: 'Keep order around the speech, and keep it peaceful',
+    news: 'A union speaker addresses the crowd from the monument steps.',
+  },
+  {
+    id: 'band', from: 13, to: 13.75, kind: 'rally', zone: { x: -60, z: -10, r: 12 },
+    title: 'Brass band on Boulevard de Magenta',
+    g: 'Follow the brass band west and dance: the march gains support',
+    c: 'Keep the boulevard open for the brass band',
+    news: 'A brass band leads the crowd along Boulevard de Magenta.',
+  },
+  {
+    id: 'cameras', from: 17.5, to: 18.5, kind: 'cameras', zone: { x: 118, z: 18, r: 18 },
+    title: 'Live TV at the front line',
+    g: 'Cameras are rolling at Boulevard du Temple: keep it peaceful, the whole country is watching',
+    c: 'Cameras are rolling at Boulevard du Temple: any violence there counts double',
+    news: 'Live TV cameras are filming the front line at Boulevard du Temple.',
+  },
+];
+
+// The event running at this time (or null). Same on the server and in every browser.
+export function eventAt(minutes, scn = currentScenario()) {
+  const h = minutes / 60;
+  const e = EVENTS.find((x) => h >= x.from && h < x.to);
+  return e ? { ...e, ...(scn.events?.[e.id] || {}) } : null;
+}
 
 export function phaseAt(minutes) {
   const h = minutes / 60;

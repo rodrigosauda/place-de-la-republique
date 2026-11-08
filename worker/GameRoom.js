@@ -30,11 +30,11 @@ import {
   GRAB_RANGE, THROW_SPEED, THROW_HIT_RADIUS, THROW_KNOCK,
   NPC_MAX, NPC_MIN_CROWD, NPC_SPEED, NPC_CHANT_CHANCE, EMOTES, EMOTE_LIST, TAGS_PER_DAY, MAX_TAGS, TAG_RANGE,
   PLAZA, inPlaza, CURFEW_SCORE_EVERY_MS, gameMinutes, isCurfew, gameDayNumber, round2,
-  FIGHT_WEAPONS, GAS_COOLDOWN_MS, GAS_RANGE, GAS_DURATION_MS, GAS_PICKUP_MS, GAS_PICKUP_RANGE, OPINION,
+  FIGHT_WEAPONS, GAS_COOLDOWN_MS, GAS_RANGE, GAS_DURATION_MS, GAS_PICKUP_MS, GAS_PICKUP_RANGE, OPINION, ROLES, roleFor,
 } from '../shared/constants.js';
 import {
   objectiveAt, policeLine, phaseAt, linePhase, LINE_PUSH_MAX, meleeCenters, MELEE_RADIUS,
-  currentScenario, scenarioForDay, scenarioMods, scenarioLabel,
+  currentScenario, scenarioForDay, scenarioMods, scenarioLabel, eventAt,
 } from '../shared/timeline.js';
 import { sanitize } from '../shared/filter.js';
 import { sanitizeLook, lookToArray, defaultLook, randomLook } from '../shared/looks.js';
@@ -80,7 +80,7 @@ export class GameRoom extends DurableObject {
     this.registry = [];           // [{ n, f, s, l }] most recent players first (saved in storage)
     this.tags = [];               // graffiti: [{ x, y, z, nx, ny, nz, n (name), f, d (day) }]
     this.stats = {};              // day -> { j: joins, u: [unique names], pk: peak players }
-    this.day = { day: gameDayNumber(), people: {}, flags: {} }; // per-player stats for the end-of-day summary
+    this.day = { day: gameDayNumber(), people: {}, flags: {}, evb: {} }; // per-player stats for the end-of-day summary
     this.line = { phase: null, push: 0, state: 1 }; // the reactive police line (see updatePoliceLine)
     this.gas = [];      // tear-gas clouds on the ground: { id, x, z, t }
     this.gasId = 0;
@@ -100,6 +100,9 @@ export class GameRoom extends DurableObject {
     this.opinionAt = 0;      // when the opinion last drifted back towards 50
     this.lastOpinionSent = -1;
     this.lastCurfewPoint = 0;
+    this.violence = [];     // recent K.O.s between the sides: { t, x, z, side, used } (what a journalist can photograph)
+    this.lastEventTick = 0;
+    this.last = null;       // summary of the last finished day (served at /last)
 
     this.ticker = null;   // setInterval handle
     this.dirty = false;   // did anything change since the last broadcast?
@@ -119,8 +122,9 @@ export class GameRoom extends DurableObject {
     }
 
     this.ctx.blockConcurrencyWhile(async () => {
-      const saved = await this.ctx.storage.get(['truck', 'props', 'score', 'registry', 'tags', 'stats', 'day']);
-      if (saved.get('day')?.day === this.score.day) this.day = saved.get('day');
+      const saved = await this.ctx.storage.get(['truck', 'props', 'score', 'registry', 'tags', 'stats', 'day', 'last']);
+      if (saved.get('day')?.day === this.score.day) this.day = { evb: {}, ...saved.get('day') };
+      this.last = saved.get('last') || null;
       const sameDay = saved.get('score')?.day === this.score.day; // world from an older day = start fresh
       this.tags = sameDay ? saved.get('tags') || [] : [];
       this.stats = saved.get('stats') || {};
@@ -141,6 +145,10 @@ export class GameRoom extends DurableObject {
 
   // Called by worker/index.js for every new connection (and for /stats).
   async fetch(request) {
+    if (new URL(request.url).pathname === '/last') {
+      // How the last finished day ended (shown in the start menu).
+      return Response.json(this.last, { headers: { 'cache-control': 'public, max-age=30' } });
+    }
     if (new URL(request.url).pathname === '/stats') {
       // Simple player statistics (last 14 game days): joins, unique players, peak online.
       const days = Object.entries(this.stats).slice(-14).map(([day, s]) => ({ day: Number(day), joins: s.j, unique: s.u.length, peak: s.pk, ads: s.ads || {} }));
@@ -200,6 +208,7 @@ export class GameRoom extends DurableObject {
       case MSG.AD_SEEN: return p && this.handleAdSeen(p, msg);
       case MSG.GAS: return p && this.handleGas(p, msg);
       case MSG.CROWD: return p && this.handleCrowdHit(p, msg);
+      case MSG.ABILITY: return p && this.handleAbility(ws, p);
     }
   }
 
@@ -229,6 +238,9 @@ export class GameRoom extends DurableObject {
       v: 0, b: 0, w: DEFAULT_WEAPON[faction], hp: MAX_HP, ko: 0, at: 0, ct: 0, th: 0,
       l: lookToArray(sanitizeLook(msg.l, faction)), // outfit (validated against the catalog)
       tg: 0, tgDay: -1, // graffiti tags sprayed today
+      ro: roleFor(msg.ro, faction), // optional role (medic / journalist / drummer)
+      bd: [0, 1, 2, 3].includes(msg.bd) ? msg.bd : 0, // loyalty badge (cosmetic)
+      ab: 0, // time the role ability is ready again
     };
     // After a reconnect the client sends where it was, so nobody jumps back to spawn.
     this.applyPosition(player, msg.p, msg.r);
@@ -590,6 +602,7 @@ export class GameRoom extends DurableObject {
     this.updateNpcFights(now);
     this.updatePoliceLine(now);
     this.updateCurfew(now);
+    this.updateEvent(now);
     this.updateOpinion(now);
 
     if (this.saveDue && now - this.lastSave > 5000) {
@@ -957,16 +970,16 @@ export class GameRoom extends DurableObject {
     this.addScore(winner, 1);
     for (const p of present[winner]) this.person(p).zp += 1;
     // Holding the route builds support for the protest; the police taking it back costs a little.
-    this.shiftOpinion(winner === 'g' ? OPINION.hold : -OPINION.hold / 2, null);
+    this.shiftOpinion(winner === 'g' ? OPINION.hold : -OPINION.hold / 2, 'h');
   }
 
   // 06:00: send everyone a summary of the day that just ended, then reset.
   endOfDay(newDay) {
     const people = Object.values(this.day.people);
-    const total = (p) => p.ko * 3 + p.zp + p.tg * 2;
+    const total = (p) => p.ko * 3 + p.zp + p.tg * 2 + (p.hl || 0) * 2 + (p.ph || 0);
     const top = people.sort((a, b) => total(b) - total(a)).slice(0, 5).map((p) => ({ ...p, total: total(p) }));
     const pick = (fn) => people.reduce((best, p) => (!best || fn(p) > fn(best) ? p : best), null);
-    const brawler = pick((p) => p.ko), tagger = pick((p) => p.tg);
+    const brawler = pick((p) => p.ko), tagger = pick((p) => p.tg), healer = pick((p) => p.hl || 0), reporter = pick((p) => p.ph || 0);
     const winner = this.score.g === this.score.c ? 'draw' : this.score.g > this.score.c ? 'g' : 'c';
     this.updateOpinion(Date.now());
     const scn = scenarioForDay(this.score.day); // the day that just ended
@@ -976,12 +989,16 @@ export class GameRoom extends DurableObject {
         awards: [
           brawler?.ko ? `Most knock-outs: ${brawler.n} (${brawler.ko})` : null,
           tagger?.tg ? `Busiest graffiti artist: ${tagger.n} (${tagger.tg} tags)` : null,
+          healer?.hl ? `Street medic of the day: ${healer.n} (${healer.hl} people treated)` : null,
+          reporter?.ph ? `Reporter of the day: ${reporter.n} (${reporter.ph} photos)` : null,
         ].filter(Boolean),
       });
     }
+    this.last = { g: this.score.g, c: this.score.c, o: Math.round(this.opinion()), scn: scenarioLabel(scn), winner, day: this.score.day, players: people.length };
+    this.ctx.storage.put('last', this.last);
     this.score = { g: 0, c: 0, day: newDay, o: OPINION.start };
     this.opinionAt = Date.now();
-    this.day = { day: newDay, people: {}, flags: {} };
+    this.day = { day: newDay, people: {}, flags: {}, evb: {} };
     this.resetWorld();
     this.broadcast(this.scoreMessage());
     this.saveDue = true;
@@ -1187,7 +1204,7 @@ export class GameRoom extends DurableObject {
 
   broadcastRoster() {
     const l = [
-      ...[...this.players.values()].map((p) => [p.id, p.n, p.f, p.s, 0, p.l]),
+      ...[...this.players.values()].map((p) => [p.id, p.n, p.f, p.s, 0, p.l, p.ro || '', p.bd || 0]),
       ...[...this.npcs.values()].map((n) => [n.id, n.n, n.f, n.s, 1, n.l]),
     ];
     this.broadcast({ t: MSG.ROSTER, l });
@@ -1208,9 +1225,9 @@ export class GameRoom extends DurableObject {
   }
 
   scoreMessage(why) {
-    const m = { t: MSG.SCORE, g: this.score.g, c: this.score.c, o: Math.round(this.opinion()) };
+    const m = { t: MSG.SCORE, g: this.score.g, c: this.score.c, o: Math.round(this.opinion() * 10) / 10 };
     if (why) m.r = why;
-    this.lastOpinionSent = m.o;
+    this.lastOpinionSent = Math.round(m.o);
     return m;
   }
 
@@ -1253,12 +1270,94 @@ export class GameRoom extends DurableObject {
     const side = attacker.id === 'L' ? 'c' : attacker.id === 'X' ? 'g' : attacker.f; // the police line / the angry crowd
     if ((side !== 'g' && side !== 'c') || side === target.f) return;
     const actor = attacker.npc ? null : attacker;
+    // What a journalist can photograph for the next 15 s.
+    this.violence.push({ t: now, x: target.x, z: target.z, side });
+    if (this.violence.length > 40) this.violence.shift();
+    // Live TV: a K.O. in front of the cameras counts double.
+    const ev = eventAt(gameMinutes(now));
+    const cam = ev && ev.kind === 'cameras' && Math.hypot(target.x - ev.zone.x, target.z - ev.zone.z) <= ev.zone.r ? 2 : 1;
     if (side === 'g') {
-      this.shiftOpinion(-OPINION.violence * (byTruck ? 2 : 1), 'v', actor);
+      this.shiftOpinion(-OPINION.violence * (byTruck ? 2 : 1) * cam, 'v', actor);
     } else {
       const marching = ['gathering', 'march'].includes(phaseAt(gameMinutes(now)).id);
-      this.shiftOpinion(OPINION.backlash * (byTruck ? 2 : 1) * (marching ? 1.5 : 1), 'b', actor);
+      this.shiftOpinion(OPINION.backlash * (byTruck ? 2 : 1) * (marching ? 1.5 : 1) * cam, 'b', actor);
     }
+  }
+
+  // ------------------------------------------------------------------------
+  // Roles (R key) and events
+  // ------------------------------------------------------------------------
+  handleAbility(ws, p) {
+    const role = ROLES[p.ro];
+    const now = Date.now();
+    if (!role || p.hp <= 0 || p.v || now < p.ab) return;
+    p.ab = now + role.cooldown;
+    let out = { t: MSG.ABILITY_OUT, id: p.id, k: p.ro, ok: 0 };
+    if (p.ro === 'm') {
+      // The nearest hurt or K.O. person within range (anyone: street medics treat everybody).
+      let best = null, bestD = role.range;
+      for (const t of this.targets()) {
+        if (t === p || t.v || (t.hp >= MAX_HP && t.hp > 0)) continue;
+        const d = Math.hypot(t.x - p.x, t.z - p.z);
+        if (d <= bestD) { best = t; bestD = d; }
+      }
+      if (!best) { // nobody to treat: no cooldown, just tell the medic
+        p.ab = now + 800;
+        this.send(ws, out);
+        return;
+      }
+      {
+        best.hp = MAX_HP;
+        best.ko = 0;
+        if (!best.npc) this.sockets.get(best.id)?.serializeAttachment(best);
+        out = { ...out, ok: 1, to: best.id, hp: best.hp };
+        this.person(p).hl = (this.person(p).hl || 0) + 1;
+        this.shiftOpinion(OPINION.medic, 'm', p);
+      }
+    } else if (p.ro === 'j') {
+      const near = this.violence.filter((v) => !v.used && now - v.t < 15000 && Math.hypot(v.x - p.x, v.z - p.z) <= role.range);
+      const police = near.filter((v) => v.side === 'c'), clash = near.filter((v) => v.side === 'g');
+      near.forEach((v) => { v.used = true; }); // each incident can only be photographed once
+      if (police.length) this.shiftOpinion(OPINION.photoPolice * Math.min(3, police.length), 'p', p);
+      else if (clash.length) this.shiftOpinion(-OPINION.photoClash * Math.min(3, clash.length), 'q', p);
+      else this.shiftOpinion(OPINION.photoPeace, 'o', p);
+      this.person(p).ph = (this.person(p).ph || 0) + 1;
+      out.ok = 1;
+    } else if (p.ro === 'd') {
+      let crowd = 0;
+      for (const t of this.targets()) {
+        if (t.f === 'g' && t.hp > 0 && Math.hypot(t.x - p.x, t.z - p.z) <= role.range) crowd++;
+      }
+      if (crowd >= 6) this.shiftOpinion(OPINION.drums, 'd', p);
+      out.ok = 1;
+    }
+    this.broadcast(out);
+    ws.serializeAttachment(p);
+  }
+
+  // Rally events: protesters standing in the zone win support (capped per event per day).
+  updateEvent(now) {
+    if (now - this.lastEventTick < 4000) return;
+    this.lastEventTick = now;
+    const ev = eventAt(gameMinutes(now));
+    if (!ev) return;
+    this.news(ev.news, `ev-${ev.id}`);
+    if (ev.kind !== 'rally') return;
+    const inZone = (x, z) => Math.hypot(x - ev.zone.x, z - ev.zone.z) <= ev.zone.r;
+    const prot = [], police = [];
+    let drummer = false;
+    for (const p of this.players.values()) {
+      if (p.hp <= 0 || !inZone(p.x, p.z) || inSafeZone(p.x, p.z)) continue;
+      if (p.f === 'g') { prot.push(p); if (p.ro === 'd') drummer = true; } else if (p.f === 'c') police.push(p);
+    }
+    if (!prot.length || police.length > prot.length) return; // nobody there, or the police crowd them out
+    this.day.evb = this.day.evb || {};
+    const used = this.day.evb[ev.id] || 0;
+    if (used >= OPINION.eventBudget) return;
+    const gain = OPINION.event * (drummer ? 1.5 : 1);
+    this.day.evb[ev.id] = used + gain;
+    for (const p of prot) this.person(p).zp += 1;
+    this.shiftOpinion(gain, 'e');
   }
 
   // Something changed -> make sure the ticker is running.

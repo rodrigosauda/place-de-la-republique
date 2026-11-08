@@ -6,6 +6,16 @@ export default defineConfig({
     outDir: 'dist',        // wrangler.jsonc serves this folder as static assets
     emptyOutDir: true,
     chunkSizeWarningLimit: 6000, // Rapier ships its WASM inlined (~4 MB), that's expected
+    rollupOptions: {
+      output: {
+        // Separate files download in parallel and stay cached when only the game code changes.
+        manualChunks(id) {
+          if (id.includes('@dimforge')) return 'rapier';
+          if (id.includes('node_modules/three')) return 'three';
+          if (id.includes('mapData.json')) return 'map';
+        },
+      },
+    },
   },
   server: {
     port: 5173,

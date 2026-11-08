@@ -59,7 +59,7 @@ export function createMinimap() {
     show(on) { canvas.style.display = on ? 'block' : 'none'; },
 
     // me = { x, z, faction }; yaw = camera yaw; others = [{ x, z, faction }]; truck = { x, z }
-    update({ me, yaw, others, truck, objective, line }) {
+    update({ me, yaw, others, truck, objective, line, event }) {
       const half = SIZE / 2;
       g.clearRect(0, 0, SIZE, SIZE);
       g.save();
@@ -92,6 +92,14 @@ export function createMinimap() {
           g.beginPath(); g.arc(objective.x, objective.z, objective.r, 0, Math.PI * 2);
           g.fill(); g.stroke();
         }
+      }
+      // Today's event: a cyan ring
+      if (event) {
+        g.lineWidth = 2 / zoom;
+        g.strokeStyle = `rgba(102,224,255,${0.6 + 0.3 * Math.sin(performance.now() / 350)})`;
+        g.fillStyle = 'rgba(102,224,255,0.16)';
+        g.beginPath(); g.arc(event.x, event.z, event.r, 0, Math.PI * 2);
+        g.fill(); g.stroke();
       }
       // Police line: a red marker where the shields are
       if (line) dot(line.x, line.z, 6, '#ff4d5e', true);

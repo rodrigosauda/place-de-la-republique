@@ -22,7 +22,8 @@ export const INTERP_DELAY_MS = 150;
 // ---------------------------------------------------------------------------
 export const MSG = {
   // client -> server
-  JOIN: 'j',        // { t, n: name, f: faction, s: slogan, l: look array, p?: [x,y,z], r? } (p = keep position after a reconnect)
+  JOIN: 'j',        // { t, n: name, f: faction, s: slogan, l: look array, ro?: role code, bd?: badge 0-3, p?: [x,y,z], r? } (p = keep position after a reconnect)
+  ABILITY: 'z',     // { t }                 use my role's ability (R key): treat / photograph / drum
   LOOK: 'L',        // { t, l: look array }  I changed my outfit
   EMOTE: 'm',       // { t, e }              play emote number e (see EMOTE_LIST)
   TAG: 'y',         // { t, p: [x,y,z], n: [nx,ny,nz] }  spray my tag on a wall
@@ -63,6 +64,7 @@ export const MSG = {
   RESET: 'V',        // { t }                              new day: everything goes back to its place
   CROWD_OUT: 'I',   // { t, i, k: [kx, kz], by }         a background extra was knocked down
   SUMMARY: 'U',     // { t, ... }                        end-of-day summary (at 06:00)
+  ABILITY_OUT: 'Q', // { t, id, k: role, ok: 0|1, to?: id, hp? }  someone used a role ability (ok 0 = nothing to do)
   ERROR: 'E',       // { t, m: message }
 };
 
@@ -265,9 +267,34 @@ export const OPINION = {
   gas: 0.8,            // police gas a crowd of 4+ protesters: +this
   hold: 1.0,           // protesters win an objective tick: +this (police win one: -this / 2)
   chant: 0.4,          // a protester chant, at most one per player per 10 s
+  medic: 0.4,          // a medic treats someone
+  photoPolice: 1.5,    // journalist photographs police violence (per incident, max 3)
+  photoClash: 1.0,     // journalist photographs protesters fighting: -this per incident (max 3)
+  photoPeace: 0.3,     // journalist photographs a calm march
+  drums: 0.25,         // drummer with a crowd around
+  event: 1.0,          // a rally event (speech, brass band) every 4 s while protesters stand in it
+  eventBudget: 12,     // ...but at most this much per event per game day
   perPlayerPerMinute: 8, // nobody can move the meter by more than this per minute on their own
   high: 70, low: 30,   // thresholds that change the police line and trigger a headline
 };
+
+// ---------------------------------------------------------------------------
+// Roles: an optional job on top of your faction, with ONE ability on the R key.
+//   m Medic      treat a hurt or K.O. person within 4 m (stands them up at once)
+//   j Journalist photograph what is happening around you: police violence exposed helps the
+//                protest, footage of protesters fighting hurts it, a calm march helps a little
+//   d Drummer    drum to keep the march going (helps public opinion when a crowd is around)
+// ---------------------------------------------------------------------------
+export const ROLES = {
+  m: { label: 'Medic', icon: '✚', factions: ['g', 'c'], cooldown: 6000, range: 4, blurb: 'Treat hurt or K.O. people close to you (R). Everyone is a patient.' },
+  j: { label: 'Journalist', icon: '📷', factions: ['g'], cooldown: 12000, range: 30, blurb: 'Photograph what you see (R). Expose violence, film calm marches.' },
+  d: { label: 'Drummer', icon: '🥁', factions: ['g'], cooldown: 4000, range: 12, blurb: 'Drum (R) to keep the march going while a crowd is around you.' },
+};
+export const roleFor = (code, faction) => (ROLES[code]?.factions.includes(faction) ? code : '');
+
+// Loyalty badge shown next to your name (cosmetic, stored in your browser): stars by days played.
+export const badgeForDays = (days) => (days >= 15 ? 3 : days >= 7 ? 2 : days >= 3 ? 1 : 0);
+export const badgeText = (n) => '★'.repeat(Math.max(0, Math.min(3, n | 0)));
 
 // Round a number to 2 decimals before sending (centimetre precision is plenty).
 export const round2 = (n) => Math.round(n * 100) / 100;

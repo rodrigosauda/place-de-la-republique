@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { LOW_QUALITY } from '../quality.js';
 
-const COUNT = LOW_QUALITY ? 600 : 1800;
+const COUNT = LOW_QUALITY ? 900 : 3600;
 const SIZE = 44;      // metres: width/depth of the rain box around the camera
 const HEIGHT = 28;    // metres: how high the streaks start
 const FALL = 24;      // m/s
@@ -37,7 +37,7 @@ export function createWeather(scene) {
       const shown = Math.floor(COUNT * intensity);
       const k = 0.25 + 0.75 * daylight;
       mat.color.setRGB(0.62 * k, 0.69 * k, 0.77 * k);
-      mat.opacity = 0.18 + 0.3 * intensity;
+      mat.opacity = 0.25 + 0.4 * intensity;
       for (let i = 0; i < COUNT; i++) {
         const o = i * 6;
         if (i >= shown) { pos[o] = pos[o + 3] = pos[o + 1] = pos[o + 4] = pos[o + 2] = pos[o + 5] = 0; continue; }
@@ -46,7 +46,7 @@ export function createWeather(scene) {
         base[i * 3 + 1] = y;
         const x = base[i * 3], z = base[i * 3 + 2];
         pos[o] = x; pos[o + 1] = y; pos[o + 2] = z;                                   // head
-        pos[o + 3] = x - WIND * 0.035; pos[o + 4] = y + FALL * 0.035; pos[o + 5] = z; // tail (up and upwind)
+        pos[o + 3] = x - WIND * 0.055; pos[o + 4] = y + FALL * 0.055; pos[o + 5] = z; // tail (up and upwind)
       }
       geo.attributes.position.needsUpdate = true;
     },

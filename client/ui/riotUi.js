@@ -37,6 +37,16 @@ export function createRiotUi(scene) {
   ring.visible = false;
   scene.add(ring);
 
+  // A second ring for today's event (speech, brass band, TV cameras).
+  const evRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.94, 1, 64),
+    new THREE.MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }),
+  );
+  evRing.rotation.x = -Math.PI / 2;
+  evRing.userData.noMerge = true;
+  evRing.visible = false;
+  scene.add(evRing);
+
   // ---------------------------------------------------------- gas
   const gas = div('gas-overlay');
 
@@ -61,14 +71,17 @@ export function createRiotUi(scene) {
 
     // obj = today's objective from shared/timeline.js (or null), dist = metres to it.
     // lineState: 1 the police line is advancing, 0 held, -1 falling back, null = no clash now.
-    setObjective(obj, faction, distance, phaseTitle, lineState = null) {
-      if (!faction) { objective.style.display = 'none'; ring.visible = false; return; }
+    // ev = the event running now (or null), evDistance = metres to it.
+    setObjective(obj, faction, distance, phaseTitle, lineState = null, ev = null, evDistance = 0) {
+      if (!faction) { objective.style.display = 'none'; ring.visible = false; evRing.visible = false; return; }
       objective.style.display = 'block';
       const text = obj ? obj[faction] : phaseTitle;
       const far = obj && !obj.zone.plaza && distance > obj.zone.r ? ` · ${Math.round(distance)} m` : '';
       const LINE = { 1: 'Police line: advancing', 0: 'Police line: HELD by protesters', '-1': 'Police line: FALLING BACK' };
       const status = lineState === null || lineState === undefined ? '' : LINE[lineState];
-      const key = `${text}${far}${status}`;
+      const evFar = ev && evDistance > ev.zone.r ? ` · ${Math.round(evDistance)} m` : '';
+      const evText = ev ? `${ev.title}: ${ev[faction]}${evFar}` : '';
+      const key = `${text}${far}${status}|${evText}`;
       if (objective.dataset.key !== key) {
         objective.dataset.key = key;
         objective.innerHTML = '';
@@ -82,7 +95,22 @@ export function createRiotUi(scene) {
           st.textContent = status;
           objective.append(st);
         }
+        if (ev) {
+          const line = document.createElement('div');
+          line.className = 'ev-line';
+          const tag = document.createElement('span');
+          tag.className = 'label ev';
+          tag.textContent = 'EVENT';
+          line.append(tag, document.createTextNode(` ${evText}`));
+          objective.append(line);
+        }
         objective.classList.toggle('free', !obj);
+      }
+      evRing.visible = !!ev;
+      if (ev) {
+        evRing.position.set(ev.zone.x, 0.07, ev.zone.z);
+        evRing.scale.setScalar(ev.zone.r);
+        evRing.material.opacity = 0.3 + Math.sin(performance.now() / 350) * 0.15;
       }
       ring.visible = !!obj && !obj.zone.plaza;
       if (ring.visible) {
@@ -99,7 +127,7 @@ export function createRiotUi(scene) {
     },
 
     // The end-of-day window. msg = SUMMARY from the server.
-    showSummary(msg, onClose) {
+    showSummary(msg, onClose, personalNote = '') {
       const winner = msg.winner === 'draw' ? 'A draw!' : `${FACTIONS[msg.winner].label} win the day!`;
       summary.innerHTML = '';
       const card = div('menu-card summary', summary);
@@ -136,6 +164,12 @@ export function createRiotUi(scene) {
         p.className = 'award';
         p.textContent = `★ ${a}`;
         card.append(p);
+      }
+      if (personalNote) {
+        const me = document.createElement('p');
+        me.className = 'award mine';
+        me.textContent = personalNote;
+        card.append(me);
       }
       const next = document.createElement('p');
       next.className = 'help';

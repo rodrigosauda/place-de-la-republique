@@ -8,7 +8,7 @@ import { LOW_QUALITY } from '../quality.js';
 
 export function createRenderers(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(LOW_QUALITY ? 0.6 : Math.min(window.devicePixelRatio, 2)); // cap for performance
+  renderer.setPixelRatio(LOW_QUALITY ? 0.6 : Math.min(window.devicePixelRatio, 1.5)); // cap for performance (the game adapts it further, see main.js)
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = !LOW_QUALITY;
   renderer.shadowMap.type = THREE.PCFShadowMap;

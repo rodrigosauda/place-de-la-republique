@@ -11,7 +11,7 @@ const DUSK_SKY = new THREE.Color(0xe39a6b);
 const NIGHT_SKY = new THREE.Color(0x1a2648);
 const RAIN_SKY = new THREE.Color(0x7d8794);
 
-export function setupDayNight(scene, lighting, physics, nightMaterials = [], atmosphere = null, lampSpots = []) {
+export function setupDayNight(scene, lighting, physics, nightMaterials = [], atmosphere = null, lampSpots = [], world = null) {
   // Street lamps around the plaza (a pole + a glowing ball).
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x1f3a2a, flatShading: true }); // Paris green
   const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff1c1, emissive: 0xffd27a, emissiveIntensity: 0 });
@@ -62,6 +62,8 @@ export function setupDayNight(scene, lighting, physics, nightMaterials = [], atm
 
       lighting.sun.intensity = (atmosphere ? 0.1 + 2.6 * daylight : 0.15 + 2.05 * daylight) * (1 - 0.55 * wet);
       lighting.sun.color.setHSL(0.1, 0.6, 0.6 + 0.3 * daylight);
+      lighting.sun.shadow.intensity = 1 - 0.7 * wet; // overcast sky: soft, faint shadows
+      world?.setWet(wet);                            // damp, darker, shinier ground
       // Less flat ambient light when the HDR environment lights the scene.
       lighting.ambient.intensity = atmosphere ? 0.35 + 0.25 * daylight : 0.8 + 0.4 * daylight; // nights stay playable
       lighting.ambient.color.setHSL(0.6, 0.5 - 0.1 * daylight, 0.55 + 0.35 * daylight);

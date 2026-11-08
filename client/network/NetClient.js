@@ -41,6 +41,9 @@ export class NetClient {
     this.onSummary = () => {};
     this.onReset = () => {};
     this.onCrowd = () => {};
+    this.onAbility = () => {};
+    this.role = '';  // 'm' | 'j' | 'd' | '' (set by main.js)
+    this.badge = 0;  // loyalty stars 0-3 (cosmetic)
   }
 
   connect(name, faction) {
@@ -60,7 +63,7 @@ export class NetClient {
     ws.addEventListener('open', () => {
       this.retries = 0;
       this.onStatus('connected');
-      const join = { t: MSG.JOIN, n: this.name, f: this.faction, s: this.slogan || '', l: this.look };
+      const join = { t: MSG.JOIN, n: this.name, f: this.faction, s: this.slogan || '', l: this.look, ro: this.role, bd: this.badge };
       const pose = this.getJoinPose();
       if (pose) { join.p = pose.p; join.r = pose.r; }
       this.send(join);
@@ -94,6 +97,7 @@ export class NetClient {
         case MSG.SUMMARY: this.onSummary(msg); break;
         case MSG.RESET: this.onReset(); break;
         case MSG.CROWD_OUT: this.onCrowd(msg); break;
+        case MSG.ABILITY_OUT: this.onAbility(msg); break;
       }
     });
 

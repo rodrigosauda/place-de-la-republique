@@ -52,7 +52,7 @@ function add(parent, geo, material, x, y, z, { rx = 0, ry = 0, rz = 0, shadow = 
   return m;
 }
 
-export function createPlayerMesh(name, faction, isLocal = false, slogan = '', isNpc = false, lookIn = null) {
+export function createPlayerMesh(name, faction, isLocal = false, slogan = '', isNpc = false, lookIn = null, badge = '') {
   const look = { ...defaultLook(faction), ...(lookIn || {}) };
   const body = BODIES[look.body]?.id ?? 'man';
   const female = body === 'woman' || body === 'oldwoman';
@@ -243,7 +243,7 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
   const color = FACTIONS[faction]?.color ?? 0xffffff;
   const div = document.createElement('div');
   div.className = 'name-label' + (isLocal ? ' local' : '') + (isNpc ? ' npc' : '');
-  div.textContent = isNpc ? `${name} · NPC` : name;
+  div.textContent = isNpc ? `${name} · NPC` : badge ? `${badge} ${name}` : name; // badge = role icon + loyalty stars
   div.style.borderColor = '#' + color.toString(16).padStart(6, '0');
   const label = new CSS2DObject(div);
   label.position.set(0, PLAYER_HALF_HEIGHT + 0.5, 0);

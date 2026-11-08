@@ -94,6 +94,8 @@ To test the production build locally first: `npm run preview` then open http://l
 | Block (police shield also stops water) | hold right mouse or Q | Block / Spray |
 | Pick up / throw a bin or barrier; protesters: throw a fresh tear-gas canister back | G (click also throws) | Grab / Throw |
 | Tear gas (police) | H | Tear gas (police only) |
+| Role ability (medic / journalist / drummer) | R | Role |
+| Skip the first-steps guide | K | tap the panel |
 | Truck in / out | E | Truck |
 | Water cannon (in truck) | hold click or Space | Block / Spray |
 | Chat / chants / mute | Enter / 1–4 / M | Chat |
@@ -210,6 +212,36 @@ politicians, logos or footage).
 
 Testing: open the game with `?scenario=act1|act2|halloween|union` to force one, or set `SCENARIO` in the
 worker env for the server side (they must match).
+
+## Roles, events and the first minute
+
+**Roles** (optional, picked in the start menu, one ability on **R**; `ROLES` in `shared/constants.js`, logic in
+`handleAbility` in `worker/GameRoom.js`). The server checks cooldown, distance and who may take the role.
+
+| Role | Who | R does |
+|---|---|---|
+| Medic ✚ | both sides | stands up a hurt or K.O. person within 4 m (anyone), a little sympathy for the protest, counts in the day's awards |
+| Journalist 📷 | protesters | photographs what happened in the last 15 s within 30 m: police violence exposed helps the protest, protesters fighting hurts it, a calm march helps a little (each incident can be photographed once) |
+| Drummer 🥁 | protesters | drums (needs 6+ protesters within 12 m to help public opinion); stronger rallies when you stand in an event ring |
+
+**Events** (`EVENTS` in `shared/timeline.js`, a cyan ring on the ground and on the minimap, an "EVENT" line under the
+goal, and a headline): *speech at the monument* 11:30, *brass band* 13:00 (renamed *costume parade* on Halloween) and
+*live TV at the front line* 17:30. Rally events give protesters standing inside a slow public-opinion bonus (capped per
+event per day; more police than protesters inside cancels it; a drummer boosts it). During live TV every K.O. inside the
+ring moves public opinion twice as much.
+
+**First steps**: a short guide (move, reach the goal, hit, block, chant, role) shown once; it is remembered in your browser.
+Use `?tutorial=1` to replay it.
+
+**Coming back**: the browser remembers your day streak, days played and days won (`client/profile.js`, localStorage only).
+Stars next to your name at 3, 7 and 15 days played are sent when you join (cosmetic only). The start menu shows how the
+last finished day ended (`/last`, public and tiny) and your streak, and the end-of-day window shows your own line.
+
+**Feedback**: every public-opinion change shows a floating number next to the bar ("+1.5 photo"), with a soft tick; crossing
+70 or 30 plays a chime. The camera pulls in when a tree trunk, lamp post or wall is between you and the view. The game
+lowers its resolution by itself if the frame rate stays under about 30 fps (and raises it again when there is room).
+Rain wets the ground and softens the shadows. Audio is still synthesized (no sound files): crowd murmur, rhythmic chanting,
+distant sirens, helicopter, rain with drips, drum phrases, camera shutter.
 
 ## How the networking works (short version)
 

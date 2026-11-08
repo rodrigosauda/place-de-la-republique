@@ -29,6 +29,12 @@ export class ThirdPersonCamera {
     this.shakeAmount = 0;              // metres of random jitter, fades out by itself (see shake())
     this.dom = domElement;
 
+    // Keeping the view clear: tree trunks / lamp posts [[x, z, radius], ...] and walls (physics ray) pull the camera in.
+    this.obstacles = [];
+    this.physics = null;
+    this.shownDistance = this.distance; // the distance actually used this frame (smoothed)
+    this.occlusion = true;              // false in the start menu (the camera circles the square from far away)
+
     this.onTap = null;           // called on a punch click / tap
     this.lockEnabled = false;    // main.js turns this on after you press Play
     this.onLockChange = null;    // main.js shows/hides the "click to play" hint
@@ -86,6 +92,44 @@ export class ThirdPersonCamera {
     });
   }
 
+  // Give the camera the posts it must not sit inside (see world.obstacles) and the physics world for walls.
+  setOcclusion(obstacles, physics) {
+    this.obstacles = obstacles;
+    this.physics = physics;
+  }
+
+  // How far behind the target the camera may go along the direction (dx,dy,dz) before something blocks the view.
+  clearDistance(dx, dy, dz, wanted) {
+    let d = wanted;
+    const T = this.target;
+    // 1) round posts (tree trunks are about 5 m tall; above that the view is free)
+    const hx = dx, hz = dz, len = Math.hypot(hx, hz);
+    if (len > 1e-4) {
+      const ux = hx / len, uz = hz / len;
+      for (const [ox, oz, r] of this.obstacles) {
+        const px = ox - T.x, pz = oz - T.z;
+        if (px * px + pz * pz > (wanted + 2) * (wanted + 2)) continue;
+        const along = px * ux + pz * uz;                 // metres (horizontal) to the closest point
+        if (along < 0.3) continue;
+        const off = Math.abs(px * uz - pz * ux);         // sideways miss distance
+        const rr = r + 0.45;
+        if (off > rr) continue;
+        const enter = (along - Math.sqrt(rr * rr - off * off)) / len; // back to 3D distance along the ray
+        const height = T.y + dy * enter;
+        if (height < 6 && enter < d) d = Math.max(0.5, enter - 0.1);
+      }
+    }
+    // 2) walls and buildings (static colliders only: not players, not the truck)
+    if (this.physics) {
+      const { RAPIER, world } = this.physics;
+      const ray = new RAPIER.Ray({ x: T.x, y: T.y, z: T.z }, { x: dx, y: dy, z: dz });
+      const flags = RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC | RAPIER.QueryFilterFlags.EXCLUDE_DYNAMIC;
+      const hit = world.castRay(ray, d, true, flags);
+      if (hit && hit.timeOfImpact < d) d = Math.max(0.5, hit.timeOfImpact - 0.25);
+    }
+    return d;
+  }
+
   get locked() {
     return document.pointerLockElement === this.dom;
   }
@@ -130,11 +174,18 @@ export class ThirdPersonCamera {
     this.target.y += (position.y + height - this.target.y) * k;
     this.target.z += (position.z - this.target.z) * k;
 
-    const horizontal = Math.cos(this.pitch) * this.distance;
+    // Direction from the target to the camera, and how far we can really go along it.
+    const dirX = Math.sin(this.yaw) * Math.cos(this.pitch);
+    const dirY = Math.sin(this.pitch);
+    const dirZ = Math.cos(this.yaw) * Math.cos(this.pitch);
+    const free = this.occlusion ? this.clearDistance(dirX, dirY, dirZ, this.distance) : this.distance;
+    // Pull in fast when something blocks the view, drift back out slowly.
+    this.shownDistance += (free - this.shownDistance) * (1 - Math.exp(-(free < this.shownDistance ? 25 : 3) * dt));
+    const dist = Math.min(this.distance, Math.max(0.5, this.shownDistance));
     this.camera.position.set(
-      this.target.x + Math.sin(this.yaw) * horizontal,
-      this.target.y + Math.sin(this.pitch) * this.distance,
-      this.target.z + Math.cos(this.yaw) * horizontal,
+      this.target.x + dirX * dist,
+      this.target.y + dirY * dist,
+      this.target.z + dirZ * dist,
     );
     if (this.shakeAmount > 0.002) {
       const a = this.shakeAmount;

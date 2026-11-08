@@ -25,6 +25,12 @@ export function createHud() {
   lockHint.textContent = 'Click to play — move the mouse to look around · Esc frees the mouse';
   const crosshair = el('hud-crosshair');
   const hit = el('hud-hit'); // red edge flash when you get hit
+  const pops = document.createElement('div'); // floating +/- public opinion numbers
+  pops.className = 'op-pops';
+  document.body.appendChild(pops);
+  const shutter = document.createElement('div'); // white flash when you take a photo
+  shutter.className = 'hud-shutter';
+  document.body.appendChild(shutter);
   hit.style.display = 'block';
   water.innerHTML = '<span>Water</span><div class="bar"><div class="fill"></div></div>';
   const waterFill = water.querySelector('.fill');
@@ -38,6 +44,24 @@ export function createHud() {
       hit.classList.remove('on');
       void hit.offsetWidth; // restart the CSS animation
       hit.classList.add('on');
+    },
+
+    // A floating number near the opinion bar: delta > 0 helps the protesters (yellow), < 0 the police (blue).
+    popOpinion(delta, label = '') {
+      const pop = document.createElement('div');
+      pop.className = 'op-pop ' + (delta > 0 ? 'up' : 'down');
+      const n = Math.abs(delta) >= 1 ? Math.round(delta) : Math.round(delta * 10) / 10;
+      pop.textContent = `${delta > 0 ? '+' : '−'}${Math.abs(n)}${label ? ' ' + label : ''}`;
+      pops.appendChild(pop);
+      while (pops.children.length > 5) pops.firstChild.remove();
+      setTimeout(() => pop.remove(), 2200);
+    },
+
+    // Camera flash (journalist).
+    flashShutter() {
+      shutter.classList.remove('on');
+      void shutter.offsetWidth;
+      shutter.classList.add('on');
     },
 
     setStatus(text) {

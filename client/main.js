@@ -11,9 +11,11 @@ import * as THREE from 'three';
 import {
   MSG, TICK_MS, SPAWNS, VEHICLE_ENTER_DISTANCE, FACTIONS, MAX_HP, EMOTES, WEAPONS,
   GRAB_RANGE, THROW_SPEED, TAG_RANGE, EMOTE_LIST, round2, gameMinutes,
-  GAS_COOLDOWN_MS, GAS_RANGE, inSafeZone, TRUCK_SPAWN, isCurfew,
+  GAS_COOLDOWN_MS, GAS_RANGE, inSafeZone, TRUCK_SPAWN, isCurfew, ROLES, badgeText, OPINION,
 } from '../shared/constants.js';
-import { objectiveAt, phaseAt, newsAt, currentScenario, scenarioLabel } from '../shared/timeline.js';
+import { objectiveAt, phaseAt, newsAt, eventAt, currentScenario, scenarioLabel } from '../shared/timeline.js';
+import { recordVisit, recordSummary, loadProfile, updateProfile, badgeOf } from './profile.js';
+import { createTutorial } from './ui/tutorial.js';
 import { createWeather } from './scene/weather.js';
 import { createRiotScene } from './scene/riot.js';
 import { buildBases } from './scene/bases.js';
@@ -59,9 +61,11 @@ async function start() {
   const { renderer, labelRenderer } = createRenderers(document.getElementById('app'));
   const cam = new ThirdPersonCamera(renderer.domElement);
   const world = buildWorld(scene, physics);
+  cam.setOcclusion(world.obstacles, physics); // keep tree trunks, lamp posts and walls out of the view
+  cam.occlusion = false;                      // (off in the start menu)
   const lighting = setupLighting(scene);
   const atmosphere = setupAtmosphere(renderer, scene, cam.camera); // sky, HDR lighting, post-processing
-  const dayNight = setupDayNight(scene, lighting, physics, world.nightMaterials, atmosphere, world.lamps);
+  const dayNight = setupDayNight(scene, lighting, physics, world.nightMaterials, atmosphere, world.lamps, world);
   const weather = createWeather(scene);
   const bigScreen = createBigScreen(scene);
   const bases = buildBases(scene, physics); // police buses + café: where each side starts
@@ -96,8 +100,10 @@ async function start() {
   const remotes = new Map(); // id -> RemotePlayer
   const names = new Map();   // id -> name
   const factions = new Map(); // id -> faction
+  const roles = new Map();    // id -> role code ('m' | 'j' | 'd' | '')
   let local = null;          // LocalPlayer, created when you press Play
   let pendingExit = false;   // we left the truck; ignore old "you own it" messages
+  let tutorial = null;       // first-minute guide (see ui/tutorial.js)
   let status = 'menu';
   let score = { g: 0, c: 0 };
   let opinion = 50;          // public opinion, 0..100 (100 = with the protesters)
@@ -108,7 +114,17 @@ async function start() {
     b: 'Police violence rallies public opinion to the protesters',
     g: 'Tear gas on a peaceful crowd backfires on the police',
     c: 'Chanting together builds support',
+    h: '',
+    m: 'Street medics earn the protest sympathy',
+    p: 'A journalist exposes police violence',
+    q: 'Footage of a clash hurts the protest',
+    o: 'Calm footage of the march builds support',
+    d: 'The drums keep the march going',
+    e: 'The rally wins hearts',
   };
+  // Short labels for the floating +/- numbers next to the opinion bar.
+  const REASON_SHORT = { v: 'violence', b: 'police violence', g: 'tear gas', c: 'chant', h: 'the route', m: 'medic', p: 'photo', q: 'clash footage', o: 'calm march', d: 'drums', e: 'rally' };
+  let opinionKnown = false;  // false until the first SCORE message (no pop-up for the number we join with)
   let lastSent = '';
   let wasCurfew = null;
 
@@ -182,19 +198,22 @@ async function start() {
       local.hp = MAX_HP;
     }
     joinedBefore = true;
+    opinionKnown = false; // the next SCORE is just the current value, not a change
     lastSent = ''; // force sending our state again
   };
 
   net.onRoster = (list) => {
     const present = new Set();
-    for (const [id, name, faction, slogan, isNpc, lookArr] of list) {
+    for (const [id, name, faction, slogan, isNpc, lookArr, roleCode, stars] of list) {
       present.add(id);
       names.set(id, name);
       factions.set(id, faction);
+      roles.set(id, roleCode || '');
       if (id === net.myId) continue;
       const look = arrayToLook(lookArr);
       if (remotes.has(id)) { remotes.get(id).setLook(look); continue; } // outfit may have changed
-      remotes.set(id, new RemotePlayer(scene, physics, id, name, faction, slogan, isNpc === 1, look));
+      remotes.set(id, new RemotePlayer(scene, physics, id, name, faction, slogan, isNpc === 1, look,
+        [ROLES[roleCode]?.icon, badgeText(stars)].filter(Boolean).join(' ')));
     }
     for (const [id, remote] of remotes) { // remove players who left
       if (!present.has(id)) {
@@ -279,8 +298,18 @@ async function start() {
   }
   net.onScore = (s) => {
     score = { g: s.g, c: s.c };
+    const before = opinion;
     opinion = typeof s.o === 'number' ? s.o : 50;
     if (s.r && REASONS[s.r]) { opinionNote = REASONS[s.r]; opinionNoteUntil = performance.now() + 4000; }
+    const delta = opinion - before;
+    if (opinionKnown && s.r && Math.abs(delta) >= 0.05) {
+      hud.popOpinion(delta, REASON_SHORT[s.r] || '');
+      sfx.opinionTick(delta > 0);
+      // Crossing a threshold: a chime, and the bar tells you what it means (see OPINION).
+      if (before < OPINION.high && opinion >= OPINION.high) sfx.threshold(true);
+      else if (before > OPINION.low && opinion <= OPINION.low) sfx.threshold(false);
+    }
+    opinionKnown = true;
   };
 
   net.onChat = ({ id, m }) => {
@@ -289,6 +318,44 @@ async function start() {
     who?.fx.say(m);
     chat.add(names.get(id) ?? '?', m, FACTION_CSS[factions.get(id)] ?? '#fff');
     sfx.pop();
+  };
+
+  // ------------------------------------------------------ roles (R key)
+  let abilityReadyAt = 0;
+  let abilityHintUntil = 0;
+  let abilityHint = '';
+  function useAbility() {
+    if (!local || local.inVehicle || local.isKO || !net.myId || !net.role) return;
+    const now = performance.now();
+    if (now < abilityReadyAt) return;
+    abilityReadyAt = now + 700; // the server sets the real cooldown; this just stops key spam
+    net.send({ t: MSG.ABILITY });
+    tutorial?.notify('ability');
+  }
+  net.onAbility = ({ id, k, ok, to, hp }) => {
+    const mine = id === net.myId;
+    const actor = mine ? local : remotes.get(id);
+    if (!actor) return;
+    const pos = mine ? local.position : actor.mesh.position;
+    const v = mine ? 1 : volumeAt(pos);
+    if (mine) abilityReadyAt = performance.now() + (ok || k !== 'm' ? ROLES[k].cooldown : 800);
+    if (k === 'm') {
+      if (!ok) { if (mine) { abilityHint = 'Nobody close to you needs treatment'; abilityHintUntil = performance.now() + 2000; sfx.noItem(); } return; }
+      if (to === net.myId) local?.reviveInPlace(hp);
+      else remotes.get(to)?.setHp(hp);
+      const patient = to === net.myId ? local?.position : remotes.get(to)?.mesh.position;
+      if (patient) showBonk(scene, patient, 'TREATED ✚');
+      sfx.heal(to === net.myId ? 1 : volumeAt(patient ?? pos));
+    } else if (k === 'j') {
+      actor.fx.swing();
+      showBonk(scene, pos, 'CLICK 📷');
+      sfx.shutter();
+      if (mine) hud.flashShutter();
+    } else if (k === 'd') {
+      showBonk(scene, pos, 'BOOM-BOOM 🥁');
+      sfx.drumPhrase(v);
+      if (mine) cam.shake(0.05);
+    }
   };
 
   // ------------------------------------------------------ riot events
@@ -325,7 +392,12 @@ async function start() {
     if (!local) return;
     cam.unlock();
     input.enabled = false;
-    riotUi.showSummary(msg, () => { input.enabled = true; if (!isTouch) cam.lock(); });
+    const p = recordSummary(msg, local.faction);
+    const mine = (msg.top ?? []).find((r) => r.n === local.name);
+    const note = `${msg.winner === local.faction ? 'Your side won this day. ' : ''}`
+      + `${mine ? `You scored ${mine.total} points. ` : ''}`
+      + `Streak: ${p.streak} day${p.streak === 1 ? '' : 's'} · ${p.wins} day${p.wins === 1 ? '' : 's'} won · ${p.days} played.`;
+    riotUi.showSummary(msg, () => { input.enabled = true; if (!isTouch) cam.lock(); }, note);
   };
 
   // H (police): throw tear gas where you are looking.
@@ -407,6 +479,7 @@ async function start() {
     if (local.carrying >= 0) return throwProp(); // hands full: click throws the prop
     if (!local.tryAttack(performance.now(), cam.aimYaw)) return; // cooldown, KO, shield or driving
     sfx.whoosh();
+    tutorial?.notify('hit');
     const p = local.position;
     // Did we hit one of the background extras? (players and NPCs are judged by the server)
     const extra = riot.findExtra(p.x, p.z, local.facing, WEAPONS[local.weapon].range + 0.3, local.faction);
@@ -465,8 +538,12 @@ async function start() {
   const loading = document.getElementById('loading');
   if (loading) { loading.classList.add('done'); setTimeout(() => loading.remove(), 600); }
 
-  showStartMenu(({ name, faction, slogan, look }) => {
+  showStartMenu(({ name, faction, slogan, look, role }) => {
     sfx.unlock(); // browsers only allow sound after a click
+    const profile = recordVisit(); // counts today, extends your streak
+    net.role = role || '';
+    net.badge = badgeOf(profile);
+    cam.occlusion = true;
     const s = SPAWNS[faction];
     const angle = Math.random() * Math.PI * 2;
     const spawn = { x: s.x + Math.cos(angle) * s.radius * Math.random(), z: s.z + Math.sin(angle) * s.radius * Math.random() };
@@ -478,7 +555,12 @@ async function start() {
     cam.distance = 9;
     cam.snapTo(local.position);
     net.slogan = slogan;
-    touch.setFaction(faction);
+    touch.setFaction(faction, net.role);
+    // First visit (or ?tutorial=1): the short guide.
+    if (!profile.tutorialDone || new URLSearchParams(location.search).get('tutorial')) {
+      tutorial = createTutorial({ isTouch, role: net.role, faction });
+      tutorial.begin(local.position, () => { updateProfile({ tutorialDone: true }); tutorial = null; });
+    }
     net.connect(name, faction);
     // Capture the mouse: from now on, moving it turns the camera (Esc to release).
     if (!isTouch) {
@@ -518,11 +600,35 @@ async function start() {
 
   // ------------------------------------------------------ game loop
   const clock = new THREE.Clock();
+
+  // Adaptive resolution: if the frame rate stays low, draw fewer pixels (and creep back up when there is room).
+  const maxRatio = renderer.getPixelRatio();
+  let ratio = maxRatio, ratioCeiling = maxRatio, slowFrames = 0, frameCount = 0, frameTime = 0, lastDropAt = 0;
+  function adaptResolution(dt, now) {
+    if (LOW_QUALITY || document.hidden) return;
+    frameTime += dt; frameCount++;
+    if (frameCount < 90) return;
+    const avg = frameTime / frameCount;
+    frameTime = 0; frameCount = 0;
+    if (avg > 1 / 30 && ratio > 0.7) { // under ~30 fps
+      if (++slowFrames >= 1) {
+        if (ratio < ratioCeiling) ratioCeiling = ratio; // we already tried that one: don't go back up
+        ratio = Math.max(0.7, ratio - 0.2);
+        atmosphere.setPixelRatio(ratio);
+        lastDropAt = now; slowFrames = 0;
+      }
+    } else if (avg < 1 / 52 && ratio < Math.min(maxRatio, ratioCeiling) && now - lastDropAt > 15000) {
+      ratio = Math.min(maxRatio, ratio + 0.1);
+      atmosphere.setPixelRatio(ratio);
+    }
+  }
   const tmp = new THREE.Vector3();
 
   renderer.setAnimationLoop(() => {
-    const dt = Math.min(clock.getDelta(), 0.05); // clamp: avoids huge jumps after tab switch
+    const rawDt = clock.getDelta();
+    const dt = Math.min(rawDt, 0.05); // clamp: avoids huge jumps after tab switch
     const now = performance.now();
+    adaptResolution(Math.min(rawDt, 0.25), now); // measured on real frame times (a long pause doesn't count)
     const driving = local?.inVehicle;
 
     if (local) handleKeys(driving);
@@ -541,7 +647,10 @@ async function start() {
       truck.spraying = input.spray && truck.water > 1;
       truck.drive(dt, input, props);
     } else {
-      if (local) local.blocking = input.block && !local.isKO && local.carrying < 0;
+      if (local) {
+        local.blocking = input.block && !local.isKO && local.carrying < 0;
+        if (local.blocking) tutorial?.notify('block');
+      }
       local?.update(dt, input, cam.yaw, props);
       if (local?.justDashed) { local.justDashed = false; sfx.whoosh(0.7); cam.shake(0.06); }
       truck.followNetwork(now);
@@ -616,9 +725,11 @@ async function start() {
     if (input.pressed('KeyV') && !driving) sprayTag();
     if (input.pressed('KeyM')) sfx.toggleMute();
     if (input.pressed('KeyH') && !driving) throwGas();
+    if (input.pressed('KeyR')) useAbility();
+    if (input.pressed('KeyK')) tutorial?.skip();
     // 1-4 = chants / emotes
     ['Digit1', 'Digit2', 'Digit3', 'Digit4'].forEach((code, i) => {
-      if (input.pressed(code)) net.send({ t: MSG.CHAT, m: EMOTES[local.faction][i] });
+      if (input.pressed(code)) { net.send({ t: MSG.CHAT, m: EMOTES[local.faction][i] }); if (i === 0) tutorial?.notify('chant'); }
     });
   }
 
@@ -634,6 +745,7 @@ async function start() {
       others: [...remotes.values()].filter((r) => !r.isNpc).map((r) => ({ x: r.mesh.position.x, z: r.mesh.position.z, faction: r.faction })),
       truck: { x: truck.position.x, z: truck.position.z },
       objective: obj ? obj.zone : null,
+      event: eventAt(minutes)?.zone ?? null,
       line: ['clashes', 'curfew', 'night'].includes(phase) ? riot.line : null,
     });
   }
@@ -654,15 +766,16 @@ async function start() {
     };
     hud.setStatus(texts[status] ?? '');
     if (status === 'connected') {
-      const list = [`• ${local.name} (you)`];
-      for (const r of humans) list.push(`• ${r.name} — ${FACTIONS[r.faction].label}`);
+      const list = [`• ${local.name} (you)${net.role ? ' — ' + ROLES[net.role].label : ''}`];
+      for (const r of humans) list.push(`• ${r.name} — ${FACTIONS[r.faction].label}${roles.get(r.id) ? ' ' + ROLES[roles.get(r.id)].label : ''}`);
       if (npcCount) list.push(`+ ${npcCount} NPCs (crowd & offline players)`);
       hud.setPlayers(list);
     } else hud.setPlayers([]);
 
     hud.setHealth(local.hp, local.isKO ? Math.ceil((local.koUntil - performance.now()) / 1000) : 0,
       local.carrying >= 0 ? 'Carrying — click to throw'
-        : `${WEAPONS[local.weapon].label} · Dash [C]: ${performance.now() >= local.dashReadyAt ? 'ready' : '…'}`);
+        : `${WEAPONS[local.weapon].label} · Dash [C]: ${performance.now() >= local.dashReadyAt ? 'ready' : '…'}`
+          + (net.role ? ` · ${ROLES[net.role].label} [R]: ${performance.now() >= abilityReadyAt ? 'ready' : '…'}` : ''));
     if (opinionNote && performance.now() > opinionNoteUntil) opinionNote = '';
     hud.setClock(minutes, score, local.faction, opinion, scenarioLabel(), opinionNote);
     hud.setWater(local.inVehicle ? truck.water : null);
@@ -677,7 +790,8 @@ async function start() {
     else if (local.inVehicle) hud.setHint('W/S: drive · A/D: steer · hold click or Space: water · E: get out');
     else if (local.position.distanceTo(truck.position) < VEHICLE_ENTER_DISTANCE) {
       hud.setHint(truck.ownerId ? `Truck driven by ${names.get(truck.ownerId) ?? '?'}` : 'Press E to drive the water cannon');
-    } else if (performance.now() < safeHintUntil) hud.setHint('Safe zone: no fighting here. Step out of the ring to fight.');
+    } else if (performance.now() < abilityHintUntil) hud.setHint(abilityHint);
+    else if (performance.now() < safeHintUntil) hud.setHint('Safe zone: no fighting here. Step out of the ring to fight.');
     else if (performance.now() < gasHintUntil) hud.setHint('Tear gas is reloading…');
     else if (performance.now() < tagHintUntil) hud.setHint(`Face a wall closer than ${TAG_RANGE} m to spray your tag (V)`);
     else if (local.faction === 'g' && riot.canisterNear(local.position.x, local.position.z)) hud.setHint('G: throw the tear-gas canister back!');
@@ -714,7 +828,10 @@ async function start() {
     if (!local) { riotUi.setObjective(null, null); return; }
     const obj = objectiveAt(minutes);
     const dist = obj ? Math.hypot(local.position.x - obj.zone.x, local.position.z - obj.zone.z) : 0;
-    riotUi.setObjective(obj, local.faction, dist, phaseAt(minutes).title, riot.lineState);
+    const ev = eventAt(minutes);
+    const evDist = ev ? Math.hypot(local.position.x - ev.zone.x, local.position.z - ev.zone.z) : 0;
+    riotUi.setObjective(obj, local.faction, dist, phaseAt(minutes).title, riot.lineState, ev, evDist);
+    if (tutorial) tutorial.update(local.position, obj ? obj.zone : null);
 
     // Tear gas: slows you, hazes the screen, makes you cough. Masks help (outfit editor!).
     const exposure = local.inVehicle ? 0 : riot.gasAt(local.position.x, local.position.z) * (1 - gasProtection(local.look));
@@ -728,7 +845,10 @@ async function start() {
     const crowdDist = s.crowdCount ? local.position.distanceTo(s.centroid) : 999;
     const near = Math.max(0, 1 - crowdDist / 70);
     const heliVol = s.heliOn ? Math.max(0, 1 - local.position.distanceTo(s.heliPos) / 110) : 0;
-    sfx.ambience(s.chantLevel * near * Math.min(1, s.crowdCount / 40), heliVol * 0.6);
+    const ph = phaseAt(minutes).id;
+    const sirens = ph === 'clashes' ? 0.7 : ph === 'curfew' ? 1 : ph === 'evening' ? 0.3 : 0; // somewhere in the streets
+    sfx.ambience(s.chantLevel * near * Math.min(1, s.crowdCount / 40), heliVol * 0.6,
+      Math.max(0, s.chantLevel - 0.25) * near * Math.min(1, s.crowdCount / 30), sirens);
     if (s.drumHit) sfx.drum(near * 0.7, s.drumHit === 1);
     const line = riot.line;
     if (phaseAt(minutes).id === 'clashes' && Math.random() < dt * 0.25) {
@@ -737,7 +857,7 @@ async function start() {
   }
 
   // Handy for debugging in the browser console: type `game` and press Enter.
-  window.game = { riot, riotUi, scene, physics, truck, remotes, props, net, cam, get local() { return local; }, get score() { return score; } };
+  window.game = { riot, riotUi, scene, physics, truck, remotes, props, net, cam, renderer, get local() { return local; }, get score() { return score; }, get tutorial() { return tutorial; }, get adapt() { return { ratio, ratioCeiling, frameCount, frameTime }; } };
 }
 
 start();

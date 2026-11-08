@@ -7,6 +7,7 @@
 import { EMOTE_LIST } from '../../shared/constants.js';
 import { createOutfitEditor } from './outfitEditor.js';
 import { openShop } from './shop.js';
+import { sfx } from '../audio/sfx.js';
 
 export function createBottomBar({ onEmote, onTag, onChat, onOutfitSaved, onOpenWindow, onCloseWindow, getOutfitContext, onMute, getSponsor }) {
   const bar = document.createElement('div');
@@ -108,9 +109,14 @@ export function createBottomBar({ onEmote, onTag, onChat, onOutfitSaved, onOpenW
           <tr><td>Emotes · tag · chat</td><td>T · V · Enter</td></tr>
           <tr><td>Chants · mute · zoom</td><td>1–4 · M · wheel</td></tr>
         </table>
+        <div class="sound-box">
+          <b>Sound</b>
+          <label><input type="checkbox" data-s="on" /> Sound on (M)</label>
+          <label>Volume <input type="range" data-s="vol" min="0" max="100" /></label>
+          <label><input type="checkbox" data-s="amb" /> Ambient sounds (helicopter, sirens, rain)</label>
+        </div>
         <div class="sponsor"></div>
         <div class="modal-actions">
-          <button type="button" class="secondary" data-a="mute">Sound on/off</button>
           <button type="button" class="secondary" data-a="quality">${low ? 'High quality' : 'Low quality (faster)'}</button>
           <button type="button" data-a="close">Back to the game</button>
         </div>`;
@@ -126,7 +132,12 @@ export function createBottomBar({ onEmote, onTag, onChat, onOutfitSaved, onOpenW
       } else {
         sp.textContent = contact ? `Want your brand on the big wall? Contact: ${contact}` : 'Want your brand on the big wall? Ask the game owner.';
       }
-      card.querySelector('[data-a=mute]').addEventListener('click', onMute);
+      const snd = sfx.settings;
+      const on = card.querySelector('[data-s=on]'), vol = card.querySelector('[data-s=vol]'), amb = card.querySelector('[data-s=amb]');
+      on.checked = !snd.muted; vol.value = Math.round(snd.volume * 100); amb.checked = snd.ambient;
+      on.addEventListener('change', () => { sfx.setMuted(!on.checked); sfx.unlock(); });
+      vol.addEventListener('input', () => { sfx.setVolume(vol.value / 100); sfx.unlock(); });
+      amb.addEventListener('change', () => sfx.setAmbient(amb.checked));
       card.querySelector('[data-a=quality]').addEventListener('click', () => {
         const u = new URL(location.href);
         if (low) u.searchParams.delete('quality'); else u.searchParams.set('quality', 'low');

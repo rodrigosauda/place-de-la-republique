@@ -8,6 +8,7 @@ import { createOutfitEditor, loadSavedLook, saveLook } from './outfitEditor.js';
 import { currentScenario, scenarioLabel } from '../../shared/timeline.js';
 import { loadProgress, levelProgress } from './progress.js';
 import { openShop } from './shop.js';
+import { sfx } from '../audio/sfx.js';
 
 const SLOGAN_PRESETS = ['Lower prices!', 'Fair wages', 'Hands off pensions', 'We want to be heard', 'Peaceful and loud', 'Our future!'];
 
@@ -47,6 +48,7 @@ export function showStartMenu(onPlay) {
         <input id="slogan" name="slogan" maxlength="${MAX_SLOGAN_LENGTH}" placeholder="Lower prices!" autocomplete="off" />
         <div class="slogan-presets">${SLOGAN_PRESETS.map((t) => `<button type="button" class="chip">${t}</button>`).join('')}</div>
 
+        <label class="sound-opt"><input type="checkbox" id="sound-on" /> Sound on (you can change it any time in Menu, or press M)</label>
         <div class="menu-actions">
           <button type="submit">Play</button>
           <button type="button" class="menu-shop" title="Hats, trails and name flair. Cosmetic only.">Shop</button>
@@ -172,6 +174,9 @@ export function showStartMenu(onPlay) {
     onPlay({ name, faction, slogan, look: finalLook, role });
   });
 
+  const soundOn = form.querySelector('#sound-on');
+  soundOn.checked = !sfx.settings.muted;
+  soundOn.addEventListener('change', () => sfx.setMuted(!soundOn.checked));
   form.querySelector('.menu-shop').addEventListener('click', () => openShop({}));
   form.querySelector('.watch').addEventListener('click', () => {
     editor.destroy();

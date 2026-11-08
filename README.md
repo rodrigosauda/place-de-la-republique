@@ -277,6 +277,12 @@ drum hits, whistles and the rest stay synthesised, and if a file fails to load t
 There is **no crowd murmur or chanting sound** on purpose (players found it unpleasant; an earlier version used
 recorded crowd loops). Browser console: `game.sfx.debugState()` shows what is loaded and each layer's volume.
 
+## Sound options
+
+Sound can be switched off or tuned in three places: a "Sound on" checkbox in the start menu, the **Menu** window in the
+game (Sound on, a Volume slider, and "Ambient sounds" for the helicopter, sirens and rain on their own), and the **M** key.
+The choices are remembered in this browser (`rpr_sound` in `localStorage`, see `client/audio/sfx.js`).
+
 ## Feel: hit-stop, debris, crowd, role gear
 
 - **Hits**: a brief freeze (about 55 ms, 130 ms on a K.O.) when you land or take a hit, camera shake, a burst of crumbs

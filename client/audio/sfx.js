@@ -12,7 +12,18 @@
 let ctx = null;
 let master = null;
 let noiseBuffer = null;
-let muted = false;
+// Sound settings, kept in this browser: everything off, master volume, and the ambient layers
+// (helicopter, distant sirens, rain, curfew siren) on their own. Effects like hits stay on when ambient is off.
+const SETTINGS_KEY = 'rpr_sound';
+const settings = { muted: false, volume: 1, ambient: true };
+try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}); } catch { /* ignore */ }
+settings.volume = Math.max(0, Math.min(1, Number(settings.volume) || 0));
+settings.muted = !!settings.muted;
+settings.ambient = settings.ambient !== false;
+let muted = settings.muted;
+const saveSettings = () => { settings.muted = muted; try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* ignore */ } };
+const MASTER = 0.5;
+const applyMaster = () => { if (master) master.gain.value = muted ? 0 : MASTER * settings.volume; };
 let sprayNode = null;
 let ambient = null;
 let rainNode = null;
@@ -53,7 +64,7 @@ function init() {
   if (ctx) return;
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   master = ctx.createGain();
-  master.gain.value = 0.5;
+  master.gain.value = muted ? 0 : MASTER * settings.volume;
   // Gentle limiter: the recorded crowd layers plus a brawl must never clip.
   const limiter = ctx.createDynamicsCompressor();
   limiter.threshold.value = -10; limiter.knee.value = 12; limiter.ratio.value = 6; limiter.attack.value = 0.005; limiter.release.value = 0.2;
@@ -112,12 +123,18 @@ export const sfx = {
     return { state: samplesState, loaded: Object.keys(buffers), layers: layers ? Object.fromEntries(Object.entries(layers).map(([k, g]) => [k, +g.gain.value.toFixed(3)])) : null };
   },
 
-  toggleMute() {
-    muted = !muted;
-    if (master) master.gain.value = muted ? 0 : 0.5;
+  // Settings (used by the Menu window, the start menu and the M key). All of them are remembered.
+  get settings() { return { muted, volume: settings.volume, ambient: settings.ambient }; },
+  setMuted(on) {
+    muted = !!on;
+    applyMaster();
     if (muted) this.spray(false);
+    saveSettings();
     return muted;
   },
+  toggleMute() { return this.setMuted(!muted); },
+  setVolume(v) { settings.volume = Math.max(0, Math.min(1, Number(v) || 0)); applyMaster(); saveSettings(); },
+  setAmbient(on) { settings.ambient = !!on; saveSettings(); },
 
   // Quieter the further away (0 at 40 m).
   distanceVolume(distance) {
@@ -163,7 +180,7 @@ export const sfx = {
   //   heli  helicopter overhead        siren  distant police sirens
   // (`murmur` and `chant` are still passed by main.js but ignored: no crowd sound.)
   ambience(murmur, heli, chant = 0, siren = 0) {
-    if (!ctx || muted) {
+    if (!ctx || muted || !settings.ambient) {
       if (ambient) { for (const g of Object.values(ambient)) g.gain.value = 0; }
       if (layers) { for (const g of Object.values(layers)) g.gain.value = 0; }
       return;
@@ -218,11 +235,12 @@ export const sfx = {
       src2.connect(f2).connect(g2).connect(master); src2.start();
       rainRumble = g2;
     }
-    rainNode.gain.setTargetAtTime(muted ? 0 : 0.09 * level, ctx.currentTime, 0.6);
-    rainRumble.gain.setTargetAtTime(muted ? 0 : 0.05 * level, ctx.currentTime, 0.6);
+    const rainOn = !muted && settings.ambient;
+    rainNode.gain.setTargetAtTime(rainOn ? 0.09 * level : 0, ctx.currentTime, 0.6);
+    rainRumble.gain.setTargetAtTime(rainOn ? 0.05 * level : 0, ctx.currentTime, 0.6);
     // Drips: tiny random clicks, more of them in heavier rain.
     const nowMs = performance.now();
-    if (!muted && level > 0.2 && nowMs > nextDrip) {
+    if (rainOn && level > 0.2 && nowMs > nextDrip) {
       nextDrip = nowMs + 70 + Math.random() * (260 - 180 * level);
       noise(0.025, 0.05 * level, 3500 + Math.random() * 3000, 2500, 'highpass');
     }
@@ -230,7 +248,7 @@ export const sfx = {
 
   // French police siren "pin-pon" (curfew starts).
   siren() {
-    if (!ready()) return;
+    if (!ready() || !settings.ambient) return;
     if (buffers.siren) {
       const src = ctx.createBufferSource(); src.buffer = buffers.siren;
       const g = ctx.createGain(); g.gain.value = 0.7;

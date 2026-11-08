@@ -1,6 +1,9 @@
 // client/audio/sfx.js
-// Sound effects made with the Web Audio API — no sound files needed.
-// Every sound is a few oscillators / noise bursts shaped with volume envelopes.
+// Sound effects made with the Web Audio API. Short effects (hits, whooshes, drums...) are synthesised:
+// a few oscillators / noise bursts shaped with volume envelopes.
+// The big background layers (crowd, chanting, march drums, helicopter, siren) are real CC0 recordings
+// in public/audio/ (credits in public/audio/CREDITS.md). They load in the background after the first
+// click; until they arrive, or if they fail to load, the synthesised versions play instead.
 // Browsers only allow audio after a click, so call `sfx.unlock()` from the Play button.
 // Press M in game to mute/unmute.
 
@@ -14,12 +17,45 @@ let rainNode = null;
 let rainRumble = null;
 let nextDrip = 0;
 
+// ---- recorded loops -------------------------------------------------------------------------
+const SAMPLE_FILES = ['murmur', 'chant', 'drums', 'heli', 'siren'];
+const buffers = {};      // name -> AudioBuffer
+let samplesState = 'idle'; // idle | loading | done
+let layers = null;       // name -> GainNode (looping layers, started once)
+
+function loadSamples() {
+  if (samplesState !== 'idle') return;
+  samplesState = 'loading';
+  Promise.all(SAMPLE_FILES.map(async (name) => {
+    try {
+      const res = await fetch(`/audio/${name}.m4a`);
+      if (!res.ok) throw new Error(res.status);
+      buffers[name] = await ctx.decodeAudioData(await res.arrayBuffer());
+    } catch (e) { console.warn('audio sample failed:', name, e); }
+  })).then(() => { samplesState = 'done'; });
+}
+
+function startLayers() {
+  layers = {};
+  for (const name of ['murmur', 'chant', 'drums', 'heli']) {
+    if (!buffers[name]) continue;
+    const src = ctx.createBufferSource(); src.buffer = buffers[name]; src.loop = true;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src.connect(g).connect(master);
+    src.start(0, Math.random() * buffers[name].duration); // every visit starts somewhere else
+    layers[name] = g;
+  }
+}
+
 function init() {
   if (ctx) return;
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   master = ctx.createGain();
   master.gain.value = 0.5;
-  master.connect(ctx.destination);
+  // Gentle limiter: the recorded crowd layers plus a brawl must never clip.
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -10; limiter.knee.value = 12; limiter.ratio.value = 6; limiter.attack.value = 0.005; limiter.release.value = 0.2;
+  master.connect(limiter).connect(ctx.destination);
   // 1 second of white noise, reused for whooshes, splashes and the water jet.
   noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
   const data = noiseBuffer.getChannelData(0);
@@ -66,6 +102,12 @@ export const sfx = {
   unlock() {
     init();
     if (ctx.state === 'suspended') ctx.resume();
+    loadSamples();
+  },
+
+  // For debugging: which recordings are loaded and how loud each layer is right now.
+  debugState() {
+    return { state: samplesState, loaded: Object.keys(buffers), layers: layers ? Object.fromEntries(Object.entries(layers).map(([k, g]) => [k, +g.gain.value.toFixed(3)])) : null };
   },
 
   toggleMute() {
@@ -119,7 +161,12 @@ export const sfx = {
   //   murmur  crowd talking        heli  helicopter overhead
   //   chant   the crowd chanting together (rhythmic "oh-oh-oh")      siren  distant police sirens
   ambience(murmur, heli, chant = 0, siren = 0) {
-    if (!ctx || muted) { if (ambient) { for (const g of Object.values(ambient)) g.gain.value = 0; } return; }
+    if (!ctx || muted) {
+      if (ambient) { for (const g of Object.values(ambient)) g.gain.value = 0; }
+      if (layers) { for (const g of Object.values(layers)) g.gain.value = 0; }
+      return;
+    }
+    if (samplesState === 'done' && !layers) startLayers();
     if (!ambient) {
       const loop = (type, freq, q) => {
         const src = ctx.createBufferSource(); src.buffer = noiseBuffer; src.loop = true;
@@ -162,9 +209,17 @@ export const sfx = {
       ambient = { m: m.g, h: h.g, c: chantGain, s: sirenGain };
     }
     const t = ctx.currentTime;
-    ambient.m.gain.setTargetAtTime(0.12 * murmur, t, 0.5);
-    ambient.h.gain.setTargetAtTime(0.5 * heli, t, 0.5);
-    ambient.c.gain.setTargetAtTime(0.09 * chant, t, 0.6);
+    // Recorded layers replace the synthesised crowd, chant and helicopter when they are available.
+    const fx = (name, synthGain, synthLevel, level, recGain, tc) => {
+      if (layers?.[name]) {
+        synthGain.gain.setTargetAtTime(0, t, 0.3);
+        layers[name].gain.setTargetAtTime(recGain * level, t, tc);
+      } else synthGain.gain.setTargetAtTime(synthLevel * level, t, tc);
+    };
+    fx('murmur', ambient.m, 0.12, murmur, 0.4, 0.5);
+    fx('heli', ambient.h, 0.5, heli, 0.45, 0.5);
+    fx('chant', ambient.c, 0.09, chant, 0.45, 0.6);
+    if (layers?.drums) layers.drums.gain.setTargetAtTime(0.3 * chant, t, 0.8);
     ambient.s.gain.setTargetAtTime(0.035 * siren, t, 1);
   },
 
@@ -198,6 +253,12 @@ export const sfx = {
   // French police siren "pin-pon" (curfew starts).
   siren() {
     if (!ready()) return;
+    if (buffers.siren) {
+      const src = ctx.createBufferSource(); src.buffer = buffers.siren;
+      const g = ctx.createGain(); g.gain.value = 0.7;
+      src.connect(g).connect(master); src.start();
+      return;
+    }
     for (let i = 0; i < 4; i++) {
       setTimeout(() => tone('square', i % 2 ? 435 : 580, i % 2 ? 435 : 580, 0.45, 0.12), i * 500);
     }

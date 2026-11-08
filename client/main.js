@@ -917,7 +917,7 @@ async function start() {
   }
 
   // Handy for debugging in the browser console: type `game` and press Enter.
-  window.game = { riot, riotUi, scene, physics, truck, remotes, props, net, cam, renderer, get local() { return local; }, get score() { return score; }, get tutorial() { return tutorial; }, get progress() { return progress; }, get adapt() { return { ratio, ratioCeiling, frameCount, frameTime }; } };
+  window.game = { sfx, riot, riotUi, scene, physics, truck, remotes, props, net, cam, renderer, get local() { return local; }, get score() { return score; }, get tutorial() { return tutorial; }, get progress() { return progress; }, get adapt() { return { ratio, ratioCeiling, frameCount, frameTime }; } };
 }
 
 start();

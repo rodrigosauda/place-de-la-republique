@@ -244,6 +244,14 @@ lowers its resolution by itself if the frame rate stays under about 30 fps (and 
 Rain wets the ground and softens the shadows. Audio is still synthesized (no sound files): crowd murmur, rhythmic chanting,
 distant sirens, helicopter, rain with drips, drum phrases, camera shutter.
 
+## Real recordings
+
+The crowd murmur, the chanting, the march drums, the helicopter and the curfew siren are real CC0 field recordings
+(a Paris demonstration, a Buenos Aires march, Paris helicopters and sirens), cut into seamless loops in `public/audio/`
+(credits in `public/audio/CREDITS.md`, about 2.8 MB, loaded in the background after the first click). Hits, whooshes,
+drums hits, whistles and the rest stay synthesised. If a file fails to load, the synthesised version plays instead.
+Browser console: `game.sfx.debugState()` shows what is loaded and each layer's volume.
+
 ## Feel: hit-stop, debris, crowd, role gear
 
 - **Hits**: a brief freeze (about 55 ms, 130 ms on a K.O.) when you land or take a hit, camera shake, a burst of crumbs

@@ -30,9 +30,12 @@ import {
   GRAB_RANGE, THROW_SPEED, THROW_HIT_RADIUS, THROW_KNOCK,
   NPC_MAX, NPC_MIN_CROWD, NPC_SPEED, NPC_CHANT_CHANCE, EMOTES, EMOTE_LIST, TAGS_PER_DAY, MAX_TAGS, TAG_RANGE,
   PLAZA, inPlaza, CURFEW_SCORE_EVERY_MS, gameMinutes, isCurfew, gameDayNumber, round2,
-  FIGHT_WEAPONS, GAS_COOLDOWN_MS, GAS_RANGE, GAS_DURATION_MS, GAS_PICKUP_MS, GAS_PICKUP_RANGE,
+  FIGHT_WEAPONS, GAS_COOLDOWN_MS, GAS_RANGE, GAS_DURATION_MS, GAS_PICKUP_MS, GAS_PICKUP_RANGE, OPINION,
 } from '../shared/constants.js';
-import { objectiveAt, policeLine, phaseAt, linePhase, LINE_PUSH_MAX, meleeCenters, MELEE_RADIUS } from '../shared/timeline.js';
+import {
+  objectiveAt, policeLine, phaseAt, linePhase, LINE_PUSH_MAX, meleeCenters, MELEE_RADIUS,
+  currentScenario, scenarioForDay, scenarioMods, scenarioLabel,
+} from '../shared/timeline.js';
 import { sanitize } from '../shared/filter.js';
 import { sanitizeLook, lookToArray, defaultLook, randomLook } from '../shared/looks.js';
 
@@ -60,6 +63,7 @@ export class GameRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     if (env.CLOCK_OFFSET_MS) globalThis.__clockOffset = Number(env.CLOCK_OFFSET_MS) || 0; // testing only
+    if (env.SCENARIO) globalThis.__scenario = env.SCENARIO; // testing only
 
     // id -> player. Fields (all mirrored in the socket attachment):
     //   id, n (name), f (faction), s (slogan), x, y, z, r (rotation), w (weapon)
@@ -92,7 +96,9 @@ export class GameRoom extends DurableObject {
     this.changedProps = new Set(); // indexes to include in the next snapshot
 
     // Faction scores for the current game day.
-    this.score = { g: 0, c: 0, day: gameDayNumber() };
+    this.score = { g: 0, c: 0, day: gameDayNumber(), o: OPINION.start }; // o = public opinion (see OPINION in shared/constants.js)
+    this.opinionAt = 0;      // when the opinion last drifted back towards 50
+    this.lastOpinionSent = -1;
     this.lastCurfewPoint = 0;
 
     this.ticker = null;   // setInterval handle
@@ -238,7 +244,8 @@ export class GameRoom extends DurableObject {
     this.send(ws, { t: MSG.WELCOME, id });
     this.send(ws, { t: MSG.VEHICLE, o: this.truck.o });
     this.send(ws, { t: MSG.PROPS, l: this.props.map((pr, i) => [pr[0], pr[1], this.carried.get(i) || 0]) });
-    this.send(ws, { t: MSG.SCORE, g: this.score.g, c: this.score.c });
+    this.updateOpinion(Date.now());
+    this.send(ws, this.scoreMessage());
     this.send(ws, { t: MSG.TAGS, l: this.tags });
     this.send(ws, { t: MSG.TAGS_LEFT, n: this.tagsLeft(player) });
     this.rebuildNpcs();
@@ -352,6 +359,11 @@ export class GameRoom extends DurableObject {
     const m = sanitize(msg.m, MAX_CHAT_LENGTH);
     if (!m) return;
     p.ct = now;
+    // Protesters chanting together win a little public support (at most once per 10 s each).
+    if (p.f === 'g' && EMOTES.g.includes(msg.m) && now - (p.cn || 0) > 10000) {
+      p.cn = now;
+      this.shiftOpinion(OPINION.chant, 'c', p);
+    }
     this.broadcast({ t: MSG.CHAT_OUT, id: p.id, m });
   }
 
@@ -462,6 +474,12 @@ export class GameRoom extends DurableObject {
     const d = Math.hypot(x - p.x, z - p.z);
     if (d > GAS_RANGE) { x = p.x + ((x - p.x) / d) * GAS_RANGE; z = p.z + ((z - p.z) / d) * GAS_RANGE; }
     this.addGasCloud(x, z, p.id, removed);
+    // Gassing a crowd of protesters backfires on the police.
+    if (p.f === 'c') {
+      let crowd = 0;
+      for (const t of this.targets()) if (t.f === 'g' && t.hp > 0 && Math.hypot(t.x - x, t.z - z) < 6) crowd++;
+      if (crowd >= 4) this.shiftOpinion(OPINION.gas, 'g', p);
+    }
     // NPCs inside the cloud run away from it.
     for (const n of this.npcs.values()) {
       const dx = n.x - x, dz = n.z - z, dist = Math.hypot(dx, dz);
@@ -572,6 +590,7 @@ export class GameRoom extends DurableObject {
     this.updateNpcFights(now);
     this.updatePoliceLine(now);
     this.updateCurfew(now);
+    this.updateOpinion(now);
 
     if (this.saveDue && now - this.lastSave > 5000) {
       // Save props + score at most every 5 s (storage writes count towards the free quota).
@@ -838,10 +857,13 @@ export class GameRoom extends DurableObject {
         console.log(`line ${phase} push=${this.line.push.toFixed(1)} protesters=${protesters} barricade=${barricade} police=${police} hold=${hold}`);
       }
       const before = this.line.state;
+      // Today's scenario and public opinion change how fast the line moves (opinion 100 = x0.4, 0 = x1.6).
+      const mods = scenarioMods(h);
+      const op = (this.opinion() - 50) / 50; // -1 (all for the police) .. +1 (all for the protesters)
       let speed;
-      if (resistance >= hold * 1.6) { speed = -LINE_RETREAT[phase]; this.line.state = -1; }
+      if (resistance >= hold * 1.6) { speed = -LINE_RETREAT[phase] * (1 + 0.5 * op); this.line.state = -1; }
       else if (resistance >= hold) { speed = 0; this.line.state = 0; }
-      else { speed = LINE_SPEED[phase] * (1 + Math.min(police, 4) * 0.2) * (1 - resistance / hold); this.line.state = 1; }
+      else { speed = LINE_SPEED[phase] * mods.lineSpeed * clamp(1 - 0.6 * op, 0.4, 1.6) * (1 + Math.min(police, 4) * 0.2) * (1 - resistance / hold); this.line.state = 1; }
       const old = this.line.push;
       this.line.push = clamp(old + speed * dt, 0, LINE_PUSH_MAX[phase]);
       if (Math.abs(this.line.push - old) > 0.001) this.markDirty();
@@ -862,7 +884,7 @@ export class GameRoom extends DurableObject {
       }
 
       // Tear gas fired by the line every ~9 s (in front of it).
-      if (now - this.lastAmbientGas > 9000) {
+      if (now - this.lastAmbientGas > 9000 / Math.max(0.1, mods.gas)) {
         this.lastAmbientGas = now;
         if (Math.random() < 0.6) {
           const along = (Math.random() - 0.5) * L.len, ahead = 6 + Math.random() * 10;
@@ -934,6 +956,8 @@ export class GameRoom extends DurableObject {
     if (!winner) return;
     this.addScore(winner, 1);
     for (const p of present[winner]) this.person(p).zp += 1;
+    // Holding the route builds support for the protest; the police taking it back costs a little.
+    this.shiftOpinion(winner === 'g' ? OPINION.hold : -OPINION.hold / 2, null);
   }
 
   // 06:00: send everyone a summary of the day that just ended, then reset.
@@ -944,19 +968,22 @@ export class GameRoom extends DurableObject {
     const pick = (fn) => people.reduce((best, p) => (!best || fn(p) > fn(best) ? p : best), null);
     const brawler = pick((p) => p.ko), tagger = pick((p) => p.tg);
     const winner = this.score.g === this.score.c ? 'draw' : this.score.g > this.score.c ? 'g' : 'c';
+    this.updateOpinion(Date.now());
+    const scn = scenarioForDay(this.score.day); // the day that just ended
     if (people.length) {
       this.broadcast({
-        t: MSG.SUMMARY, g: this.score.g, c: this.score.c, winner, top,
+        t: MSG.SUMMARY, g: this.score.g, c: this.score.c, o: Math.round(this.opinion()), scn: scenarioLabel(scn), winner, top,
         awards: [
           brawler?.ko ? `Most knock-outs: ${brawler.n} (${brawler.ko})` : null,
           tagger?.tg ? `Busiest graffiti artist: ${tagger.n} (${tagger.tg} tags)` : null,
         ].filter(Boolean),
       });
     }
-    this.score = { g: 0, c: 0, day: newDay };
+    this.score = { g: 0, c: 0, day: newDay, o: OPINION.start };
+    this.opinionAt = Date.now();
     this.day = { day: newDay, people: {}, flags: {} };
     this.resetWorld();
-    this.broadcast({ t: MSG.SCORE, g: 0, c: 0 });
+    this.broadcast(this.scoreMessage());
     this.saveDue = true;
   }
 
@@ -1004,6 +1031,7 @@ export class GameRoom extends DurableObject {
         this.addScore(attacker.f, 1); // a K.O. = 1 point
         if (!attacker.npc) this.person(attacker).ko += 1;
       }
+      this.opinionFromKO(target, attacker, byTruck, now);
       if (byTruck) this.news('The water cannon truck is ploughing through the crowd!', 'truck-ko');
       this.dropCarried(target.id);
     }
@@ -1168,8 +1196,69 @@ export class GameRoom extends DurableObject {
   addScore(faction, points) {
     if (faction !== 'g' && faction !== 'c') return;
     this.score[faction] = Math.max(0, this.score[faction] + points);
-    this.broadcast({ t: MSG.SCORE, g: this.score.g, c: this.score.c });
+    this.broadcast(this.scoreMessage());
     this.saveDue = true;
+  }
+
+  // ------------------------------------------------------------------------
+  // Public opinion (0..100, 100 = for the protesters). Violence backfires on whoever uses it.
+  // ------------------------------------------------------------------------
+  opinion() {
+    return this.score.o ?? OPINION.start;
+  }
+
+  scoreMessage(why) {
+    const m = { t: MSG.SCORE, g: this.score.g, c: this.score.c, o: Math.round(this.opinion()) };
+    if (why) m.r = why;
+    this.lastOpinionSent = m.o;
+    return m;
+  }
+
+  // Drift back towards 50 (worked out from the elapsed time, so it also works after the room slept).
+  updateOpinion(now) {
+    const dt = Math.min(3600, Math.max(0, (now - (this.opinionAt || now)) / 1000));
+    this.opinionAt = now;
+    const o = this.opinion();
+    if (dt > 0 && Math.abs(o - 50) > 0.001) {
+      this.score.o = o + Math.sign(50 - o) * Math.min(Math.abs(50 - o), OPINION.decayPerSec * dt);
+    }
+    if (Math.round(this.opinion()) !== this.lastOpinionSent) this.broadcast(this.scoreMessage());
+  }
+
+  // delta > 0 helps the protesters. why = one-letter reason shown to everyone (see client REASONS), actor = who did it.
+  shiftOpinion(delta, why, actor = null) {
+    const now = Date.now();
+    this.updateOpinion(now);
+    let d = delta * currentScenario(now).swing;
+    if (actor) { // nobody can swing the meter alone: a per-player budget per minute
+      if (!actor.ow || now - actor.ow.t > 60000) actor.ow = { t: now, sum: 0 };
+      const room = OPINION.perPlayerPerMinute - actor.ow.sum;
+      d = Math.sign(d) * Math.min(Math.abs(d), Math.max(0, room));
+      actor.ow.sum += Math.abs(d);
+    }
+    if (!d) return;
+    const old = this.opinion();
+    this.score.o = clamp(old + d, 0, 100);
+    this.saveDue = true;
+    this.broadcast(this.scoreMessage(why));
+    this.markDirty();
+    const o = this.opinion();
+    if (old < OPINION.high && o >= OPINION.high) this.news('Public opinion swings behind the protesters: the police line slows down.', 'op-hi');
+    if (old > OPINION.low && o <= OPINION.low) this.news('Public opinion turns against the protest: the police press forward.', 'op-lo');
+  }
+
+  // A K.O. between the two sides moves public opinion against whoever struck (see OPINION in shared/constants.js).
+  opinionFromKO(target, attacker, byTruck, now) {
+    if (!attacker || (attacker.npc && target.npc)) return; // NPC-vs-NPC brawls don't count
+    const side = attacker.id === 'L' ? 'c' : attacker.id === 'X' ? 'g' : attacker.f; // the police line / the angry crowd
+    if ((side !== 'g' && side !== 'c') || side === target.f) return;
+    const actor = attacker.npc ? null : attacker;
+    if (side === 'g') {
+      this.shiftOpinion(-OPINION.violence * (byTruck ? 2 : 1), 'v', actor);
+    } else {
+      const marching = ['gathering', 'march'].includes(phaseAt(gameMinutes(now)).id);
+      this.shiftOpinion(OPINION.backlash * (byTruck ? 2 : 1) * (marching ? 1.5 : 1), 'b', actor);
+    }
   }
 
   // Something changed -> make sure the ticker is running.

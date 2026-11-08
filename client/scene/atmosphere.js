@@ -62,14 +62,24 @@ export function setupAtmosphere(renderer, scene, camera) {
   }
 
   const sunDir = new THREE.Vector3();
+  let overcast = 0; // 0 clear .. 1 heavy rain clouds
   return {
     sunDirection: sunDir,
+    // Grey, hazy sky and softer light when it rains (0..1).
+    setOvercast(w) {
+      if (w === overcast) return;
+      overcast = w;
+      u.turbidity.value = 4 + 14 * w;
+      u.rayleigh.value = 1.6 - 1.0 * w;
+      u.mieCoefficient.value = 0.005 + 0.03 * w;
+      u.mieDirectionalG.value = 0.8 - 0.25 * w;
+    },
     // elevation/azimuth in radians. daylight 0..1, night 0..1 (for bloom).
     setSun(elevation, azimuth, daylight) {
       sunDir.setFromSphericalCoords(1, Math.PI / 2 - elevation, azimuth);
       u.sunPosition.value.copy(sunDir).multiplyScalar(450000);
-      scene.environmentIntensity = 0.12 + 0.6 * daylight;
-      renderer.toneMappingExposure = 0.55 + 0.25 * daylight;
+      scene.environmentIntensity = (0.12 + 0.6 * daylight) * (1 - 0.3 * overcast);
+      renderer.toneMappingExposure = (0.55 + 0.25 * daylight) * (1 - 0.1 * overcast);
       if (bloom) bloom.strength = 0.55 * (1 - daylight); // glow only after sunset (lamps, windows)
     },
     render(cam) {

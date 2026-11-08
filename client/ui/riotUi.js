@@ -104,11 +104,18 @@ export function createRiotUi(scene) {
       summary.innerHTML = '';
       const card = div('menu-card summary', summary);
       const h = document.createElement('h1');
-      h.textContent = 'End of the day';
+      h.textContent = msg.scn ? `End of the day · ${msg.scn}` : 'End of the day';
       const w = document.createElement('p');
       w.className = 'winner';
       w.textContent = `${winner}  Yellow Vests ${msg.g} – ${msg.c} Police`;
       card.append(h, w);
+      if (typeof msg.o === 'number') {
+        const o = document.createElement('p');
+        o.className = 'award';
+        o.textContent = msg.o === 50 ? 'Public opinion: split down the middle'
+          : `Public opinion: ${msg.o > 50 ? `${msg.o}% with the protesters` : `${100 - msg.o}% with the government`}`;
+        card.append(o);
+      }
       if (msg.top?.length) {
         const table = document.createElement('table');
         table.innerHTML = '<tr><th>Player</th><th>K.O.</th><th>Goal pts</th><th>Tags</th><th>Total</th></tr>';

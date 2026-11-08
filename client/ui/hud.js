@@ -75,10 +75,11 @@ export function createHud() {
     },
 
     // Clock + curfew + score. `faction` = your faction, for the objective text.
-    setClock(minutes, score, faction) {
+    // opinion = public opinion 0..100 (100 = all for the protesters); scenario = today's label; note = why it just moved
+    setClock(minutes, score, faction, opinion = 50, scenario = '', note = '') {
       if (minutes === null) return show(clock, false);
       show(clock, true);
-      const key = `${Math.floor(minutes)}|${score.g}|${score.c}|${faction}`;
+      const key = `${Math.floor(minutes)}|${score.g}|${score.c}|${faction}|${opinion}|${scenario}|${note}`;
       if (key === clock.dataset.key) return; // nothing changed: don't rebuild
       clock.dataset.key = key;
       const curfew = isCurfew(minutes);
@@ -89,7 +90,25 @@ export function createHud() {
       const sc = document.createElement('div');
       sc.className = 'score';
       sc.innerHTML = `<span class="g">Yellow Vests ${score.g}</span> · <span class="c">Police ${score.c}</span>`;
-      clock.append(time, sc);
+      clock.append(time);
+      if (scenario) {
+        const scn = document.createElement('div');
+        scn.className = 'scn';
+        scn.textContent = scenario;
+        clock.append(scn);
+      }
+      clock.append(sc);
+      const op = document.createElement('div');
+      op.className = 'opinion';
+      op.innerHTML = '<div class="op-label"><span class="c">Police</span><span>Public opinion</span><span class="g">Protest</span></div>'
+        + `<div class="op-bar"><i style="left:${Math.max(2, Math.min(98, opinion))}%"></i></div>`;
+      clock.append(op);
+      if (note) {
+        const n = document.createElement('div');
+        n.className = 'op-note';
+        n.textContent = note;
+        clock.append(n);
+      }
       if (curfew) {
         const banner = document.createElement('div');
         banner.className = 'curfew';

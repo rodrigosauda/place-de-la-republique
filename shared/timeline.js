@@ -7,6 +7,8 @@
 // Both the server (objectives, scoring) and every browser (crowd, news, smoke)
 // read this same file and the same game clock, so everyone sees the same day.
 
+import { gameDayNumber } from './constants.js';
+
 // Where things happen (x, z on the map). Streets leave the square at x = ±50.
 // Real places (OpenStreetMap coordinates, origin = the monument, see shared/constants.js).
 export const PLACES = {
@@ -15,6 +17,92 @@ export const PLACES = {
   metro: { x: 29, z: -1, label: 'République métro entrance' },
   plaza: { x: 0, z: 0, label: 'Place de la République' },
 };
+
+
+// ---------------------------------------------------------------------------
+// Scenarios: each game day replays a DIFFERENT real day of the October-November 2026
+// protests in France (rotating, same on the server and in every browser, no messages needed).
+// Still cartoonish and fictional: no real people, no fire, no looting.
+//   rain        0..1  weather (client visuals + sound)
+//   swing       how strongly public-opinion events move the meter
+//   lineSpeed   how fast the police line advances (1 = normal)
+//   gas         how often the line fires tear gas (1 = normal)
+//   police      share of the shield line on duty: a number, or [[hour, share], ...] (reinforcements arrive)
+//   calm        { until, lineSpeed, gas }: gentler until that hour (a cheerful march, then a masked fringe)
+//   routeChange the march objective moves at that hour
+//   news        headlines that replace / add to the default ones (at = minutes after midnight)
+// ---------------------------------------------------------------------------
+export const SCENARIOS = [
+  {
+    id: 'act1', date: '17 Oct', title: 'Act I',
+    blurb: 'Far more people than anyone expected. The police are caught short, and reinforcements arrive through the afternoon.',
+    rain: 0, swing: 1, lineSpeed: 1, gas: 1, police: [[14, 0.6], [17, 0.85], [19.5, 1]],
+    news: [
+      { at: 6 * 60, text: 'Act I, 17 October: far more people than expected are heading for the square.' },
+      { at: 16 * 60 + 30, text: 'Police reinforcements are arriving: more riot-police vans on the square.' },
+    ],
+  },
+  {
+    id: 'act2', date: '24 Oct', title: 'Act II',
+    blurb: 'Rain, marches banned in many cities, and the route changed at the last minute.',
+    rain: 0.85, swing: 1, lineSpeed: 0.9, gas: 0.9, police: 1,
+    routeChange: {
+      at: 15, zone: { x: 122, z: 20, r: 12 },
+      g: 'The route was changed: take the march east to Boulevard du Temple',
+      c: 'Stop the march at Boulevard du Temple',
+    },
+    news: [
+      { at: 6 * 60, text: 'Act II, 24 October: rain over Paris, and several marches are banned.' },
+      { at: 15 * 60, text: 'The prefecture changes the route at the last minute: the march must go east.' },
+    ],
+  },
+  {
+    id: 'halloween', date: '31 Oct', title: 'Halloween march',
+    blurb: 'A cheerful march in costumes. At the end, a masked group wants a fight.',
+    rain: 0, swing: 1.2, lineSpeed: 1.3, gas: 1.3, police: 1,
+    calm: { until: 18.5, lineSpeed: 0.5, gas: 0.4 },
+    news: [
+      { at: 6 * 60, text: 'Third wave, 31 October: marchers come in Halloween costumes.' },
+      { at: 18 * 60 + 30, text: 'The march is over, but a masked group stays behind and the mood turns.' },
+    ],
+  },
+  {
+    id: 'union', date: '5 Nov', title: 'Union strike day',
+    blurb: 'Workers, students and retirees fill the boulevards. Calm and loud, and every act counts for more.',
+    rain: 0, swing: 1.5, lineSpeed: 0.4, gas: 0.25, police: 0.8,
+    news: [
+      { at: 6 * 60, text: 'Union strike day, 5 November: the whole country is called to march for wages.' },
+      { at: 14 * 60, text: 'Workers, students and retirees march together with drums and whistles.' },
+    ],
+  },
+];
+export const scenarioForDay = (day) => SCENARIOS[((day % SCENARIOS.length) + SCENARIOS.length) % SCENARIOS.length];
+// globalThis.__scenario = 'act2' forces a scenario (testing only: ?scenario=act2 in the browser, SCENARIO=act2 for the worker).
+export const currentScenario = (nowMs = Date.now()) =>
+  (globalThis.__scenario && SCENARIOS.find((s) => s.id === globalThis.__scenario)) || scenarioForDay(gameDayNumber(nowMs));
+export const scenarioLabel = (scn = currentScenario()) => `${scn.title} · ${scn.date}`;
+
+// Linear blend through [[hour, value], ...]; 1 before the first point.
+function ramp(points, h) {
+  if (typeof points === 'number') return points;
+  if (!points || h < points[0][0]) return 1;
+  for (let i = 1; i < points.length; i++) {
+    if (h < points[i][0]) {
+      const [h0, v0] = points[i - 1], [h1, v1] = points[i];
+      return v0 + ((v1 - v0) * (h - h0)) / (h1 - h0);
+    }
+  }
+  return points[points.length - 1][1];
+}
+// What the scenario changes at hour h: { lineSpeed, gas, police }
+export function scenarioMods(h, scn = currentScenario()) {
+  const calm = scn.calm && h < scn.calm.until ? scn.calm : null;
+  return {
+    lineSpeed: calm ? calm.lineSpeed : scn.lineSpeed,
+    gas: calm ? calm.gas : scn.gas,
+    police: ramp(scn.police, h),
+  };
+}
 
 // Where the riot-police line stands at hour h (shared by every browser AND the server,
 // so the server knows where the line hits people).
@@ -33,7 +121,7 @@ export function linePhase(h) {
   if (h >= 23) return 'curfew';
   return null;
 }
-export function policeLine(h, push = null) {
+export function policeLine(h, push = null, scn = currentScenario()) {
   const f = (a) => ({ fx: -Math.sin(a), fz: Math.cos(a) });
   let L;
   if (h >= 6 && h < 10) L = { x: -27.5, z: -45, a: 0, len: 10, active: 0.35 };          // a few officers by their base
@@ -45,6 +133,8 @@ export function policeLine(h, push = null) {
   } else if (h >= 20 && h < 23) L = { x: 38, z: -1, a: Math.PI / 2, len: 14, active: 0.8 }; // guarding the métro
   else if (h >= 23) L = { x: 112 - (push ?? smoothStep(23, 24, h) * 200), z: -11, a: Math.PI / 2, len: 70, active: 1 }; // curfew sweep east -> west
   else L = { x: -88, z: -11, a: Math.PI / 2, len: 70, active: 0.6 };                       // night: square held
+  // The scenario can thin the shield line out (but never below the 0.5 that switches it on).
+  if (L.active > 0.5) L = { ...L, active: Math.max(0.55, L.active * scenarioMods(h, scn).police) };
   return { ...L, ...f(L.a) };
 }
 
@@ -105,17 +195,29 @@ export function phaseAt(minutes) {
 }
 
 // The objective active at this time (curfew wraps past midnight: 23:00-06:00).
-export function objectiveAt(minutes) {
+export function objectiveAt(minutes, scn = currentScenario()) {
   const h = minutes / 60;
   const hh = h < 6 ? h + 24 : h;
-  return OBJECTIVES.find((o) => hh >= o.from && hh < o.to) || null;
+  const o = OBJECTIVES.find((x) => hh >= x.from && hh < x.to) || null;
+  const rc = scn.routeChange;
+  if (o && o.id === 'march' && rc && hh >= rc.at) return { ...o, zone: rc.zone, g: rc.g, c: rc.c }; // route changed
+  return o;
 }
 
 // The latest news item at or before this time (null before 06:00 except curfew).
-export function newsAt(minutes) {
+const newsCache = new Map();
+function newsList(scn) {
+  if (!newsCache.has(scn.id)) {
+    const merged = NEWS.filter((n) => !(scn.news || []).some((m) => m.at === n.at)).concat(scn.news || []);
+    newsCache.set(scn.id, merged.sort((a, b) => a.at - b.at));
+  }
+  return newsCache.get(scn.id);
+}
+export function newsAt(minutes, scn = currentScenario()) {
+  const list = newsList(scn);
   let last = null;
-  for (const n of NEWS) if (minutes >= n.at) last = n;
-  return last || NEWS[NEWS.length - 1];
+  for (const n of list) if (minutes >= n.at) last = n;
+  return last || list[list.length - 1];
 }
 
 // How busy the square is (0..1), smoothed between phases.

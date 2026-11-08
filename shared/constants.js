@@ -50,7 +50,7 @@ export const MSG = {
   BLOCKED: 'B',     // { t, id }                         someone blocked a hit with their shield
   PUSH: 'P',        // { t, k: [kx, kz] }                (only to you) the water jet pushes you
   CHAT_OUT: 'C',    // { t, id, m }                      someone said something
-  SCORE: 'K',       // { t, g, c }                       faction scores
+  SCORE: 'K',       // { t, g, c, o, r? }                faction scores + public opinion o (0..100, 100 = all for the protesters); r = why it just moved (see client REASONS)
   PROPS: 'O',       // { t, l: [[x, z, carrierId|0], ...] } all street props (sent when you join)
   CARRY: 'G',       // { t, i, id }                      prop i is now carried by id (0 = dropped)
   FLY: 'F',         // { t, i, p: [x,y,z], v: [vx,vy,vz], by } prop i was thrown
@@ -250,6 +250,24 @@ export const MAX_CHAT_LENGTH = 80;
 export const CHAT_COOLDOWN_MS = 800;
 export const MAX_MESSAGE_BYTES = 512;
 export const MAX_MESSAGES_PER_SECOND = 40; // per player; extra messages are ignored
+
+// ---------------------------------------------------------------------------
+// Public opinion (0 = everybody sides with the government, 100 = everybody with the protesters).
+// Violence backfires: protesters who knock out police lose support, police who knock out protesters
+// (or gas a peaceful crowd) lose it to the protesters. Holding the route peacefully builds it.
+// It drifts back to 50 by itself. Above 70 the police line slows down, below 30 it speeds up.
+// ---------------------------------------------------------------------------
+export const OPINION = {
+  start: 50,
+  decayPerSec: 0.05,   // drift back to 50
+  violence: 1.2,       // protester K.O.s a police officer: -this
+  backlash: 1.5,       // police K.O.s a protester: +this (x1.5 while the crowd is still marching)
+  gas: 0.8,            // police gas a crowd of 4+ protesters: +this
+  hold: 1.0,           // protesters win an objective tick: +this (police win one: -this / 2)
+  chant: 0.4,          // a protester chant, at most one per player per 10 s
+  perPlayerPerMinute: 8, // nobody can move the meter by more than this per minute on their own
+  high: 70, low: 30,   // thresholds that change the police line and trigger a headline
+};
 
 // Round a number to 2 decimals before sending (centimetre precision is plenty).
 export const round2 = (n) => Math.round(n * 100) / 100;

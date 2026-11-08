@@ -13,7 +13,8 @@ import {
   GRAB_RANGE, THROW_SPEED, TAG_RANGE, EMOTE_LIST, round2, gameMinutes,
   GAS_COOLDOWN_MS, GAS_RANGE, inSafeZone, TRUCK_SPAWN, isCurfew,
 } from '../shared/constants.js';
-import { objectiveAt, phaseAt, newsAt } from '../shared/timeline.js';
+import { objectiveAt, phaseAt, newsAt, currentScenario, scenarioLabel } from '../shared/timeline.js';
+import { createWeather } from './scene/weather.js';
 import { createRiotScene } from './scene/riot.js';
 import { buildBases } from './scene/bases.js';
 import { createRiotUi } from './ui/riotUi.js';
@@ -50,6 +51,8 @@ import { lookToArray, arrayToLook, gasProtection } from '../shared/looks.js';
 const FACTION_CSS = { g: '#f7d417', c: '#9fb8ff' };
 
 async function start() {
+  const forced = new URLSearchParams(location.search).get('scenario'); // testing: ?scenario=act2|halloween|union|act1
+  if (forced) globalThis.__scenario = forced;
   // ---------------------------------------------------------------- setup
   const physics = await Physics.create(); // loads Rapier's WebAssembly
   const scene = new THREE.Scene();
@@ -59,6 +62,7 @@ async function start() {
   const lighting = setupLighting(scene);
   const atmosphere = setupAtmosphere(renderer, scene, cam.camera); // sky, HDR lighting, post-processing
   const dayNight = setupDayNight(scene, lighting, physics, world.nightMaterials, atmosphere, world.lamps);
+  const weather = createWeather(scene);
   const bigScreen = createBigScreen(scene);
   const bases = buildBases(scene, physics); // police buses + café: where each side starts
   mergeStaticMeshes(scene); // glue the static city together = much faster rendering
@@ -96,6 +100,15 @@ async function start() {
   let pendingExit = false;   // we left the truck; ignore old "you own it" messages
   let status = 'menu';
   let score = { g: 0, c: 0 };
+  let opinion = 50;          // public opinion, 0..100 (100 = with the protesters)
+  let opinionNote = '';      // why it just moved
+  let opinionNoteUntil = 0;
+  const REASONS = {
+    v: 'Violence costs the protest public support',
+    b: 'Police violence rallies public opinion to the protesters',
+    g: 'Tear gas on a peaceful crowd backfires on the police',
+    c: 'Chanting together builds support',
+  };
   let lastSent = '';
   let wasCurfew = null;
 
@@ -264,7 +277,11 @@ async function start() {
     const v = [round2(fx * THROW_SPEED), 3, round2(fz * THROW_SPEED)]; // fairly flat arc: hits people ~3-14 m away
     net.send({ t: MSG.THROW, i, v });
   }
-  net.onScore = (s) => { score = { g: s.g, c: s.c }; };
+  net.onScore = (s) => {
+    score = { g: s.g, c: s.c };
+    opinion = typeof s.o === 'number' ? s.o : 50;
+    if (s.r && REASONS[s.r]) { opinionNote = REASONS[s.r]; opinionNoteUntil = performance.now() + 4000; }
+  };
 
   net.onChat = ({ id, m }) => {
     const isMe = id === net.myId;
@@ -566,7 +583,11 @@ async function start() {
     }
     lighting.follow(cam.target);
     updateLabels();
+    const rain = currentScenario().rain; // today's weather
+    dayNight.rain += (rain - dayNight.rain) * Math.min(1, dt * 0.5); // clouds roll in and out slowly
     const minutes = dayNight.update();
+    weather.update(dt, dayNight.rain, dayNight.daylight ?? 1, cam.camera);
+    sfx.rain(dayNight.rain);
     bigScreen.update(score, minutes, [...remotes.values()].filter((r) => !r.isNpc).length + (local ? 1 : 0));
     updateHud(minutes);
     updateMinimap(minutes);
@@ -642,7 +663,8 @@ async function start() {
     hud.setHealth(local.hp, local.isKO ? Math.ceil((local.koUntil - performance.now()) / 1000) : 0,
       local.carrying >= 0 ? 'Carrying — click to throw'
         : `${WEAPONS[local.weapon].label} · Dash [C]: ${performance.now() >= local.dashReadyAt ? 'ready' : '…'}`);
-    hud.setClock(minutes, score, local.faction);
+    if (opinionNote && performance.now() > opinionNoteUntil) opinionNote = '';
+    hud.setClock(minutes, score, local.faction, opinion, scenarioLabel(), opinionNote);
     hud.setWater(local.inVehicle ? truck.water : null);
     hud.setMouseLocked(cam.locked, !isTouch && input.enabled);
 

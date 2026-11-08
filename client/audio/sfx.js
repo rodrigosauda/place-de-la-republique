@@ -10,6 +10,7 @@ let noiseBuffer = null;
 let muted = false;
 let sprayNode = null;
 let ambient = null;
+let rainNode = null;
 
 function init() {
   if (ctx) return;
@@ -117,6 +118,20 @@ export const sfx = {
     const t = ctx.currentTime;
     ambient.m.gain.setTargetAtTime(0.12 * murmur, t, 0.5);
     ambient.h.gain.setTargetAtTime(0.5 * heli, t, 0.5);
+  },
+
+  // Steady rain hiss (0..1). Called every frame; silent when the level is 0.
+  rain(level) {
+    if (!ctx) return;
+    if (!rainNode) {
+      if (level <= 0) return;
+      const src = ctx.createBufferSource(); src.buffer = noiseBuffer; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2200;
+      const g = ctx.createGain(); g.gain.value = 0;
+      src.connect(f).connect(g).connect(master); src.start();
+      rainNode = g;
+    }
+    rainNode.gain.setTargetAtTime(muted ? 0 : 0.07 * level, ctx.currentTime, 0.6);
   },
 
   // French police siren "pin-pon" (curfew starts).

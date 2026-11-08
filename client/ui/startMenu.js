@@ -4,6 +4,7 @@
 
 import { FACTIONS, MAX_NAME_LENGTH, MAX_SLOGAN_LENGTH } from '../../shared/constants.js';
 import { createOutfitEditor, loadSavedLook, saveLook } from './outfitEditor.js';
+import { currentScenario, scenarioLabel } from '../../shared/timeline.js';
 
 export function showStartMenu(onPlay) {
   const overlay = document.createElement('div');
@@ -14,6 +15,8 @@ export function showStartMenu(onPlay) {
         <h1>Place de la République</h1>
         <p class="subtitle">A protest day on Place de la République in Paris: the crowd gathers in the morning, marches at 14:00,
           clashes with the police at 17:00, and the curfew starts at 23:00. Pick a side. Cartoon brawls only: 3 bonks and you're K.O. Protesters fight with a baguette, police with a rubber chicken.</p>
+
+        <p class="today"><b>On the square right now: ${scenarioLabel()}.</b> ${currentScenario().blurb}</p>
 
         <span class="label">Faction</span>
         <div class="factions">
@@ -34,6 +37,8 @@ export function showStartMenu(onPlay) {
         <button type="submit">Play</button>
         <p class="help">Mouse: look around · Shift: run · C: dodge roll · Click / F: hit · Right mouse / Q: block · G: grab/throw ·
           E: truck · H: tear gas (Police) · T: emotes · V: tag a wall · Enter: chat · 1–4: chants · M: mute · Esc: free the mouse</p>
+        <p class="help">Violence backfires: a K.O. costs public opinion for whoever strikes. Hold the route, chant together and keep the march peaceful.
+          Inspired by the real protests in France in autumn 2026. Fictional characters, cartoon brawls only.</p>
       </div>
       <div class="menu-right"></div>
     </form>`;

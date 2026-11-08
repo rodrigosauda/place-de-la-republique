@@ -9,6 +9,7 @@ import { gameMinutes } from '../../shared/constants.js';
 const DAY_SKY = new THREE.Color(0xaecbe6);
 const DUSK_SKY = new THREE.Color(0xe39a6b);
 const NIGHT_SKY = new THREE.Color(0x1a2648);
+const RAIN_SKY = new THREE.Color(0x7d8794);
 
 export function setupDayNight(scene, lighting, physics, nightMaterials = [], atmosphere = null, lampSpots = []) {
   // Street lamps around the plaza (a pole + a glowing ball).
@@ -35,9 +36,12 @@ export function setupDayNight(scene, lighting, physics, nightMaterials = [], atm
 
   return {
     daylight: 1, // 0 at night .. 1 in the day (other modules read it)
+    rain: 0,     // 0..1, set by main.js from today's scenario
     // Returns the current game minutes (so the HUD can show the clock).
     update() {
       const minutes = gameMinutes();
+      const wet = this.rain || 0;
+      atmosphere?.setOvercast(wet);
       // daylight: 1 at noon, 0 at night, smooth around 06:00-08:00 and 19:00-21:00
       const h = minutes / 60;
       const daylight = smooth(5.5, 8, h) * (1 - smooth(19, 21.5, h));
@@ -46,13 +50,17 @@ export function setupDayNight(scene, lighting, physics, nightMaterials = [], atm
       sky.copy(NIGHT_SKY).lerp(DAY_SKY, daylight).lerp(DUSK_SKY, Math.min(dusk, 1) * 0.45);
       if (scene.background) scene.background.copy(sky);
       scene.fog.color.copy(sky);
+      if (wet) sky.lerp(RAIN_SKY, 0.5 * wet);
+      scene.fog.color.copy(sky);
+      scene.fog.near = 110 * (1 - 0.5 * wet); // rain: you see less far
+      scene.fog.far = 340 * (1 - 0.4 * wet);
       // The sun travels across the sky: rises in the east at 06:00, highest at 13:00, sets at 20:00.
       const elevation = Math.sin(((h - 6) / 14) * Math.PI) * 0.95;
       const azimuth = Math.PI * 0.5 + ((h - 6) / 14) * Math.PI;
       atmosphere?.setSun(elevation, azimuth, daylight);
       if (atmosphere) lighting.setSunDirection(atmosphere.sunDirection, elevation);
 
-      lighting.sun.intensity = atmosphere ? 0.1 + 2.6 * daylight : 0.15 + 2.05 * daylight;
+      lighting.sun.intensity = (atmosphere ? 0.1 + 2.6 * daylight : 0.15 + 2.05 * daylight) * (1 - 0.55 * wet);
       lighting.sun.color.setHSL(0.1, 0.6, 0.6 + 0.3 * daylight);
       // Less flat ambient light when the HDR environment lights the scene.
       lighting.ambient.intensity = atmosphere ? 0.35 + 0.25 * daylight : 0.8 + 0.4 * daylight; // nights stay playable

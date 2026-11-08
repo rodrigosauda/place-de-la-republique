@@ -183,6 +183,34 @@ Every game day (12 real minutes) replays the same protest day, in every browser 
   resets: bins and barriers back in place, the truck parked and full of water, graffiti cleaned, every
   player back in their base.
 
+## Public opinion and the daily scenarios
+
+Inspired by the protests in France in autumn 2026 (fictional characters; cartoon brawls only, no real
+politicians, logos or footage).
+
+**Public opinion meter** (bar under the clock, 0 = with the police, 100 = with the protesters; constants in
+`OPINION`, `shared/constants.js`; logic in `worker/GameRoom.js`):
+
+- Knocking out a protester costs opinion for whoever struck (violence backfires); knocking out police
+  while the march is peaceful helps the police side, and police violence rallies opinion to the protesters.
+- Chanting together (keys 1-4) adds a little, capped per player per minute and per 10 s.
+- Tear gas on a dense group of protesters makes opinion swing towards them.
+- Holding the day's objective moves it too. It slowly drifts back to 50.
+- Opinion changes the police line: the more people support the protest, the slower the line advances
+  and the faster it falls back. Thresholds trigger news headlines. Opinion is part of the end-of-day summary.
+
+**Scenarios** rotate by game day (`SCENARIOS` in `shared/timeline.js`), named after real dates:
+
+| Order | Scenario | What changes |
+|---|---|---|
+| 1 | Act I · 17 Oct | The police line builds up in steps through the afternoon |
+| 2 | Act II · 24 Oct | Rain, last-minute route change of the march (east, Boulevard du Temple) |
+| 3 | Halloween · 31 Oct | Calm and slow police until 18:30, then a harder, gassier evening |
+| 4 | Union day · 5 Nov | Opinion swings strongly, slower line, little gas, fewer police |
+
+Testing: open the game with `?scenario=act1|act2|halloween|union` to force one, or set `SCENARIO` in the
+worker env for the server side (they must match).
+
 ## How the networking works (short version)
 
 - Each client sends `{t:'s', p:[x,y,z], r, v}` every `TICK_MS` (only when it changed).

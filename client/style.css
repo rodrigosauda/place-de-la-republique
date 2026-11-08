@@ -316,3 +316,33 @@ canvas { display: block; touch-action: none; }
 .hud-objective .line-state.s1 { color: #9fb8ff; }
 .hud-objective .line-state.s0 { color: #f7d417; }
 .hud-objective .line-state.s-1 { color: #7dff9a; }
+
+/* ---------- hit flash (red edge when you get hit) ---------- */
+.hud-hit {
+  position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 2;
+  background: radial-gradient(ellipse at center, rgba(200, 16, 46, 0) 45%, rgba(200, 16, 46, 0.65) 100%);
+}
+.hud-hit.on { animation: hit-flash 0.45s ease-out; }
+@keyframes hit-flash { from { opacity: var(--hit, 1); } to { opacity: 0; } }
+
+/* ---------- minimap ---------- */
+.minimap {
+  position: fixed; right: 12px; bottom: 30px; width: 170px; height: 170px; z-index: 3;
+  border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.85); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  background: #1b1d24; pointer-events: none; display: none;
+}
+@media (pointer: coarse) {
+  .minimap { bottom: auto; top: 150px; width: 110px; height: 110px; }
+}
+
+/* ---------- loading screen ---------- */
+#loading { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 14px; background: #1b1d24; color: #fff; font: 600 16px system-ui, sans-serif; transition: opacity 0.4s; }
+#loading.done { opacity: 0; pointer-events: none; }
+#loading .bar { width: 220px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
+#loading .bar i { display: block; height: 100%; width: 40%; background: #f7d417; border-radius: 3px; animation: loading-slide 1.1s ease-in-out infinite alternate; }
+@keyframes loading-slide { from { margin-left: 0; } to { margin-left: 60%; } }
+.touch-ui .touch-buttons { bottom: 14px; gap: 6px; }
+.touch-ui button { height: 48px; }
+.touch-ui button[hidden] { display: none; }
+.touch-ui button[data-key="KeyC"] { background: rgba(0, 120, 90, 0.8); }

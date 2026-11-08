@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import {
   MSG, TICK_MS, SPAWNS, VEHICLE_ENTER_DISTANCE, FACTIONS, MAX_HP, EMOTES, WEAPONS,
   GRAB_RANGE, THROW_SPEED, TAG_RANGE, EMOTE_LIST, round2, gameMinutes,
-  GAS_COOLDOWN_MS, GAS_RANGE, inSafeZone, TRUCK_SPAWN,
+  GAS_COOLDOWN_MS, GAS_RANGE, inSafeZone, TRUCK_SPAWN, isCurfew,
 } from '../shared/constants.js';
 import { objectiveAt, phaseAt, newsAt } from '../shared/timeline.js';
 import { createRiotScene } from './scene/riot.js';
@@ -28,6 +28,7 @@ import { mergeStaticMeshes } from './scene/mergeStatic.js';
 import { ThirdPersonCamera } from './scene/camera.js';
 import { Input } from './player/input.js';
 import { LocalPlayer, lerpAngle } from './player/LocalPlayer.js';
+import { createMinimap } from './ui/minimap.js';
 import { RemotePlayer } from './player/RemotePlayer.js';
 import { Truck } from './vehicle/Truck.js';
 import { WaterSpray } from './vehicle/WaterSpray.js';
@@ -72,6 +73,7 @@ async function start() {
   const riotUi = createRiotUi(scene);
   const input = new Input();
   const hud = createHud();
+  const minimap = createMinimap();
   // The map comes from OpenStreetMap: its licence asks for this credit on screen.
   const credit = document.createElement('a');
   credit.className = 'osm-credit';
@@ -105,7 +107,7 @@ async function start() {
     onOpen: () => cam.unlock(),                        // free the mouse while typing
     onClose: (byKey) => { if (byKey && local) cam.lock(); }, // Enter = back to the game
   });
-  setupTouchControls(input, { onChat: () => chat.open() });
+  const touch = setupTouchControls(input, { onChat: () => chat.open() });
 
   // ------------------------------------------------------ truck ownership
   // The server is the boss: we only enter the truck when it says we own it.
@@ -351,8 +353,15 @@ async function start() {
     const target = id === net.myId ? local : remotes.get(id);
     if (!target) return;
     const pos = id === net.myId ? local.position : target.mesh.position;
-    if (id === net.myId) local.onHit(hp, k[0], k[1], performance.now(), byTruck === 1);
-    else { target.fx.flash(); target.setHp(hp); }
+    if (id === net.myId) {
+      local.onHit(hp, k[0], k[1], performance.now(), byTruck === 1);
+      cam.shake(byTruck ? 0.5 : hp <= 0 ? 0.4 : 0.25); // you feel it
+      hud.flashHit(byTruck ? 1 : hp <= 0 ? 0.9 : 0.6);
+    } else {
+      target.fx.flash();
+      target.setHp(hp);
+      if (by === net.myId) cam.shake(hp <= 0 ? 0.18 : 0.08); // landing a hit feels good too
+    }
     showBonk(scene, pos, byTruck ? text : hp <= 0 ? text : attackerFaction === 'c' ? 'SQUEAK!' : 'CRUNCH!');
     const v = id === net.myId ? 1 : volumeAt(pos);
     if (attackerFaction === 'c') sfx.squeak(v); else sfx.bonk(v);
@@ -365,6 +374,7 @@ async function start() {
     const pos = id === net.myId ? local.position : target.mesh.position;
     showBonk(scene, pos, 'BLOCK!');
     sfx.clang(id === net.myId ? 1 : volumeAt(pos));
+    if (id === net.myId) cam.shake(0.1);
   };
 
   let lastSplash = 0;
@@ -434,6 +444,10 @@ async function start() {
   });
 
   // ------------------------------------------------------ start menu
+  // Everything is built: fade out the loading screen.
+  const loading = document.getElementById('loading');
+  if (loading) { loading.classList.add('done'); setTimeout(() => loading.remove(), 600); }
+
   showStartMenu(({ name, faction, slogan, look }) => {
     sfx.unlock(); // browsers only allow sound after a click
     const s = SPAWNS[faction];
@@ -447,6 +461,7 @@ async function start() {
     cam.distance = 9;
     cam.snapTo(local.position);
     net.slogan = slogan;
+    touch.setFaction(faction);
     net.connect(name, faction);
     // Capture the mouse: from now on, moving it turns the camera (Esc to release).
     if (!isTouch) {
@@ -511,6 +526,7 @@ async function start() {
     } else {
       if (local) local.blocking = input.block && !local.isKO && local.carrying < 0;
       local?.update(dt, input, cam.yaw, props);
+      if (local?.justDashed) { local.justDashed = false; sfx.whoosh(0.7); cam.shake(0.06); }
       truck.followNetwork(now);
     }
 
@@ -553,6 +569,7 @@ async function start() {
     const minutes = dayNight.update();
     bigScreen.update(score, minutes, [...remotes.values()].filter((r) => !r.isNpc).length + (local ? 1 : 0));
     updateHud(minutes);
+    updateMinimap(minutes);
     updateRiot(dt, minutes, now);
     bases.update(now / 1000);
 
@@ -571,6 +588,7 @@ async function start() {
       }
     }
     if (input.pressed('KeyF') && !driving) attack();
+    if (input.pressed('KeyC') && !driving) local.wantDash = true; // dodge roll
     if (input.pressed('KeyG') && !driving) grabOrThrow();
     if (input.pressed('KeyT')) bar.openPicker();
     if (input.pressed('KeyO')) bar.openOutfit();
@@ -580,6 +598,22 @@ async function start() {
     // 1-4 = chants / emotes
     ['Digit1', 'Digit2', 'Digit3', 'Digit4'].forEach((code, i) => {
       if (input.pressed(code)) net.send({ t: MSG.CHAT, m: EMOTES[local.faction][i] });
+    });
+  }
+
+  // The round map: you, the objective, bases, truck, other players.
+  function updateMinimap(minutes) {
+    if (!local) { minimap.show(false); return; }
+    minimap.show(true);
+    const obj = objectiveAt(minutes);
+    const phase = phaseAt(minutes).id;
+    minimap.update({
+      me: { x: local.position.x, z: local.position.z, faction: local.faction },
+      yaw: cam.yaw,
+      others: [...remotes.values()].filter((r) => !r.isNpc).map((r) => ({ x: r.mesh.position.x, z: r.mesh.position.z, faction: r.faction })),
+      truck: { x: truck.position.x, z: truck.position.z },
+      objective: obj ? obj.zone : null,
+      line: ['clashes', 'curfew', 'night'].includes(phase) ? riot.line : null,
     });
   }
 
@@ -606,13 +640,14 @@ async function start() {
     } else hud.setPlayers([]);
 
     hud.setHealth(local.hp, local.isKO ? Math.ceil((local.koUntil - performance.now()) / 1000) : 0,
-      local.carrying >= 0 ? 'Carrying — click to throw' : WEAPONS[local.weapon].label);
+      local.carrying >= 0 ? 'Carrying — click to throw'
+        : `${WEAPONS[local.weapon].label} · Dash [C]: ${performance.now() >= local.dashReadyAt ? 'ready' : '…'}`);
     hud.setClock(minutes, score, local.faction);
     hud.setWater(local.inVehicle ? truck.water : null);
     hud.setMouseLocked(cam.locked, !isTouch && input.enabled);
 
     // Siren when the curfew starts.
-    const curfew = minutes >= 23 * 60 || minutes < 6 * 60;
+    const curfew = isCurfew(minutes);
     if (wasCurfew === false && curfew) sfx.siren();
     wasCurfew = curfew;
 

@@ -14,7 +14,7 @@ export const TICK_MS = 1000 / TICK_RATE;
 // Remote players are drawn this many ms "in the past", so we always have two
 // snapshots to interpolate between. Rule of thumb: >= 1 to 1.5 tick intervals.
 // If remote players stutter at TICK_RATE = 10, try 150.
-export const INTERP_DELAY_MS = 100;
+export const INTERP_DELAY_MS = 150;
 
 // ---------------------------------------------------------------------------
 // Message types (short keys keep messages small)
@@ -60,8 +60,8 @@ export const MSG = {
   TAGS_LEFT: 'W',   // { t, n }                          how many tags you can still spray today
   GAS_OUT: 'X',     // { t, p: [x, z], by }              a tear-gas cloud appears
   NEWS: 'N',        // { t, m }                          breaking news (dynamic events)
-  RESET: 'V',
-  CROWD_OUT: 'I',   // { t, i, k: [kx, kz], by }         a background extra was knocked down       // { t }                              new day: everything goes back to its place
+  RESET: 'V',        // { t }                              new day: everything goes back to its place
+  CROWD_OUT: 'I',   // { t, i, k: [kx, kz], by }         a background extra was knocked down
   SUMMARY: 'U',     // { t, ... }                        end-of-day summary (at 06:00)
   ERROR: 'E',       // { t, m: message }
 };

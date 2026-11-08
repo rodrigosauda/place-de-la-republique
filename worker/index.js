@@ -31,8 +31,13 @@ export default {
     }
 
     // Player statistics: https://<your-game>.workers.dev/stats
+    // Set a secret with `npx wrangler secret put STATS_KEY` to protect it: /stats?key=<secret>
     if (url.pathname === '/stats') {
-      return env.GAME_ROOM.get(env.GAME_ROOM.idFromName('main')).fetch(request);
+      if (env.STATS_KEY && url.searchParams.get('key') !== env.STATS_KEY) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      const room = (url.searchParams.get('room') || 'main').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32) || 'main';
+      return env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room)).fetch(request);
     }
 
     // Everything else: the static game client.

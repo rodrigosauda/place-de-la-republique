@@ -8,25 +8,34 @@ Everything runs on **one Cloudflare Worker** (free plan): static client + a `Gam
 
 ```
 place-de-la-republique/
-├── index.html              # page shell, loads client/main.js
+├── index.html              # page shell + loading screen, loads client/main.js
 ├── package.json            # scripts: dev, build, preview, deploy
 ├── vite.config.js          # build to dist/, proxy /ws -> wrangler dev in development
 ├── wrangler.jsonc          # Worker + static assets + Durable Object + migration
-├── scripts/ensure-dist.js  # creates an empty dist/ so `wrangler dev` can start
-├── shared/
-│   └── constants.js        # TICK_RATE, message types, factions, spawns (client + server)
+├── scripts/                # ensure-dist.js (empty dist/ for wrangler dev) · build-map.py (OSM -> mapData.json)
+├── data/                   # raw OpenStreetMap download
+├── public/                 # hdr/ (sky lighting) · ads/ (advertising wrap, see ads/README.txt)
+├── shared/                 # used by BOTH client and server
+│   ├── constants.js        # TICK_RATE, message types, factions, weapons, spawns, bases, timing
+│   ├── timeline.js         # the protest day: phases, objectives, police line
+│   ├── looks.js            # outfit catalogue
+│   └── filter.js           # bad-word filter
 ├── worker/
-│   ├── index.js            # routes /ws to GameRoom, serves everything else from dist/
-│   └── GameRoom.js         # the Durable Object: players, truck ownership, snapshots
+│   ├── index.js            # routes /ws and /stats to GameRoom, serves everything else from dist/
+│   └── GameRoom.js         # the Durable Object: players, truck, props, NPCs, police line, scores
 └── client/
     ├── main.js             # wiring + game loop
-    ├── style.css
-    ├── scene/   renderer.js · world.js · lighting.js · camera.js
+    ├── style.css · quality.js
+    ├── scene/   renderer · world · haussmann · lighting · dayNight · atmosphere · textures · riot ·
+    │            bases · bigScreen · adBanner · tags · streetFurniture · mergeStatic · camera · mapData.json
     ├── physics/ physics.js            # Rapier wrapper
-    ├── player/  input.js · playerMesh.js · LocalPlayer.js · RemotePlayer.js
-    ├── vehicle/ Truck.js
-    ├── network/ NetClient.js · interpolation.js
-    └── ui/      startMenu.js · hud.js
+    ├── player/  input · playerMesh · LocalPlayer · RemotePlayer
+    ├── vehicle/ Truck · WaterSpray
+    ├── props/   StreetProps.js        # bins and barriers
+    ├── combat/  effects.js            # BONK! texts, hit flash, weapon animations
+    ├── audio/   sfx.js                # all sounds are synthesised (Web Audio)
+    ├── network/ NetClient · interpolation
+    └── ui/      startMenu · hud · minimap · bottomBar · chat · outfitEditor · riotUi · touchControls
 ```
 
 ## 1. Install (once)
@@ -79,11 +88,12 @@ To test the production build locally first: `npm run preview` then open http://l
 |---|---|---|
 | Look around | just move the mouse (click once to capture it, Esc to free it) | drag the view |
 | Move / jump | WASD or arrows / Space | joystick / Jump |
-| Run | hold Shift | — |
+| Run | hold Shift | Run |
+| Dodge roll (short burst, 1.5 s cooldown) | C | Dash |
 | Hit (baguette / rubber chicken) | click or F | Hit |
 | Block (police shield also stops water) | hold right mouse or Q | Block / Spray |
 | Pick up / throw a bin or barrier; protesters: throw a fresh tear-gas canister back | G (click also throws) | Grab / Throw |
-| Tear gas (police) | H | — |
+| Tear gas (police) | H | Tear gas (police only) |
 | Truck in / out | E | Truck |
 | Water cannon (in truck) | hold click or Space | Block / Spray |
 | Chat / chants / mute | Enter / 1–4 / M | Chat |
@@ -117,6 +127,11 @@ Slow computer? Add `?quality=low` to the link (no shadows, fewer details).
 - Advertising wrap on the south building: see `public/ads/README.txt` (image + `ads.json` + deploy).
   Impressions (players who saw it 2+ s) appear in `/stats` under `ads`.
 - Player statistics: open `/stats` on your game URL (joins, unique players, peak per game day).
+- **Minimap** (bottom right): the real streets, rotated to where the camera looks. It shows today's objective
+  (an arrow on the rim when it is out of view), both bases, the truck, other players and the police line.
+- **Dodge roll** (C): a quick 3 m burst. Not while blocking, carrying something or K.O.
+- **Hit feedback**: the camera shakes and the screen edge flashes red when you get hit; landing a hit gives a small shake.
+- The truck is released automatically if the driver sits in it for 45 s without moving or spraying.
 - Chat bubbles, chants, sound effects, bad-word filter, auto-reconnect, touch controls.
 - Tweak numbers in `shared/constants.js` (weapons, water, truck, props, NPCs, curfew…).
 
@@ -188,6 +203,15 @@ Every game day (12 real minutes) replays the same protest day, in every browser 
 - The room stops its timer after 3 idle seconds so the Durable Object can hibernate.
 
 Free-plan limits change from time to time; check https://developers.cloudflare.com/durable-objects/platform/pricing/.
+
+## Server rules against cheating (short version)
+
+- Positions sent by clients are checked against a movement budget (`MAX_MOVE_SPEED` in `worker/GameRoom.js`,
+  30 m/s): teleports and speed hacks are pulled back towards the server's copy. After a K.O. you always get up next to your own base.
+- Sockets that never send `JOIN` are closed after 15 s and don't block the room.
+- Ad impressions count once per player name per campaign per game day.
+- `/stats` can be protected: `npx wrangler secret put STATS_KEY`, then open `/stats?key=<your secret>`
+  (add `&room=friends` for another room). Without the secret it stays public.
 
 ## Next steps
 

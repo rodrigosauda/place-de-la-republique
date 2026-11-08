@@ -32,7 +32,7 @@ export function showStartMenu(onPlay) {
         <input id="slogan" name="slogan" maxlength="${MAX_SLOGAN_LENGTH}" placeholder="Lower prices!" autocomplete="off" />
 
         <button type="submit">Play</button>
-        <p class="help">Mouse: look around · Shift: run · Click / F: hit · Right mouse / Q: block · G: grab/throw ·
+        <p class="help">Mouse: look around · Shift: run · C: dodge roll · Click / F: hit · Right mouse / Q: block · G: grab/throw ·
           E: truck · H: tear gas (Police) · T: emotes · V: tag a wall · Enter: chat · 1–4: chants · M: mute · Esc: free the mouse</p>
       </div>
       <div class="menu-right"></div>

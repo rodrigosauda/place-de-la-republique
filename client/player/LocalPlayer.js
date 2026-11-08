@@ -14,6 +14,9 @@ const WALK_SPEED = 6;     // m/s
 const JUMP_SPEED = 7;     // m/s upwards when jumping
 const GRAVITY = 22;       // m/s^2 (a bit stronger than real life feels snappier)
 const TURN_SPEED = 12;    // how fast the body rotates towards the move direction
+const DASH_SPEED = 15;    // m/s during a dodge roll (about 3.3 m in total)
+const DASH_MS = 220;
+export const DASH_COOLDOWN_MS = 1500;
 
 export class LocalPlayer {
   constructor({ scene, physics, name, faction, slogan, look, spawn }) {
@@ -40,6 +43,9 @@ export class LocalPlayer {
     this.carrying = -1;      // index of the street prop we hold above our head (-1 = none)
     this.speedFactor = 1;    // < 1 while in tear gas (set by main.js)
     this.soakedUntil = 0;    // inside the water jet until this time
+    this.wantDash = false;   // set by main.js when C is pressed
+    this.dash = null;        // { x, z, until } while dashing
+    this.dashReadyAt = 0;    // performance.now() time when the next dash is possible
 
     // --- physics: kinematic capsule + character controller ---
     const { RAPIER } = physics;
@@ -77,8 +83,23 @@ export class LocalPlayer {
     const rx = Math.cos(cameraYaw), rz = -Math.sin(cameraYaw);  // camera right
     let mx = fx * f + rx * r;
     let mz = fz * f + rz * r;
-    const len = Math.hypot(mx, mz);
+    let len = Math.hypot(mx, mz);
     if (len > 0) { mx /= len; mz /= len; }
+
+    // Dodge roll (C): a short burst in the direction you walk (or the way you face).
+    const nowMs = performance.now();
+    if (this.wantDash) {
+      this.wantDash = false;
+      if (this.canDash(nowMs)) {
+        const dx = len > 0 ? mx : Math.sin(this.facing);
+        const dz = len > 0 ? mz : Math.cos(this.facing);
+        this.dash = { x: dx, z: dz, until: nowMs + DASH_MS };
+        this.dashReadyAt = nowMs + DASH_COOLDOWN_MS;
+        this.justDashed = true;
+      }
+    }
+    const dashing = !!this.dash && nowMs < this.dash.until && !this.isKO;
+    if (dashing) { mx = this.dash.x; mz = this.dash.z; len = 1; } else this.dash = null;
 
     // 2) Vertical: gravity + jump.
     if (this.grounded && input.jump && !this.isKO) this.verticalSpeed = JUMP_SPEED;
@@ -92,7 +113,8 @@ export class LocalPlayer {
     // Holding the shield up: walk at half speed.
     // Shift = run (not while blocking or carrying something heavy).
     this.running = input.run && !this.blocking && this.carrying < 0 && len > 0;
-    const speed = (this.blocking ? WALK_SPEED * 0.5 : this.running ? WALK_SPEED * RUN_FACTOR : WALK_SPEED) * this.speedFactor;
+    const speed = dashing ? DASH_SPEED
+      : (this.blocking ? WALK_SPEED * 0.5 : this.running ? WALK_SPEED * RUN_FACTOR : WALK_SPEED) * this.speedFactor;
     const desired = {
       x: (mx * speed + this.knock.x) * dt,
       y: this.verticalSpeed * dt,
@@ -119,6 +141,14 @@ export class LocalPlayer {
       const target = Math.atan2(mx, mz);
       this.facing = lerpAngle(this.facing, target, 1 - Math.exp(-TURN_SPEED * dt));
     }
+  }
+
+  canDash(now) {
+    return !this.inVehicle && !this.isKO && !this.blocking && this.carrying < 0 && now >= this.dashReadyAt;
+  }
+
+  get isDashing() {
+    return !!this.dash && performance.now() < this.dash.until;
   }
 
   // Called every frame AFTER physics.step(): copy physics -> mesh.

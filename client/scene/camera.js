@@ -26,6 +26,7 @@ export class ThirdPersonCamera {
     this.minDistance = 3;
     this.maxDistance = 30;
     this.target = new THREE.Vector3(); // smoothed look-at point
+    this.shakeAmount = 0;              // metres of random jitter, fades out by itself (see shake())
     this.dom = domElement;
 
     this.onTap = null;           // called on a punch click / tap
@@ -111,6 +112,11 @@ export class ThirdPersonCamera {
     return this.yaw + Math.PI;
   }
 
+  // Hits and bumps: 0.1 = a tap, 0.4 = a big hit. Several shakes don't add up, the biggest wins.
+  shake(amount) {
+    this.shakeAmount = Math.max(this.shakeAmount, amount);
+  }
+
   // Jump straight to a position (no smoothing), e.g. right after spawning.
   snapTo(position) {
     this.target.copy(position);
@@ -130,6 +136,13 @@ export class ThirdPersonCamera {
       this.target.y + Math.sin(this.pitch) * this.distance,
       this.target.z + Math.cos(this.yaw) * horizontal,
     );
+    if (this.shakeAmount > 0.002) {
+      const a = this.shakeAmount;
+      this.camera.position.x += (Math.random() - 0.5) * a;
+      this.camera.position.y += (Math.random() - 0.5) * a;
+      this.camera.position.z += (Math.random() - 0.5) * a;
+      this.shakeAmount *= Math.exp(-9 * dt);
+    } else this.shakeAmount = 0;
     this.camera.lookAt(this.target);
   }
 }

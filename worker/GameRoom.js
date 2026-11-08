@@ -45,6 +45,13 @@ const LINE_HIT_COOLDOWN = 1300; // the riot-police line hits protesters in front
 const LINE = { id: 'L', f: 'x', npc: true }; // "attacker" for line hits (no points for anyone)
 const CROWD = { id: 'X', f: 'x', npc: true }; // "attacker" for the angry crowd hitting police who charge in alone
 const CROWD_HIT_COOLDOWN = 1600;
+// Anti-cheat: nobody legitimately moves faster than this (run = 10.5 m/s, dash = 15, truck = 14,
+// knockback bursts a bit more). Positions further away than that are pulled back towards the server's copy.
+const MAX_MOVE_SPEED = 30;      // m/s
+const MOVE_BUDGET_MAX = 12;     // metres of "lag spike" a player may catch up in one go
+const JOIN_TIMEOUT_MS = 15000;  // a socket that never sends JOIN is closed after this long
+const TRUCK_AFK_MS = 45000;     // a parked, silent driver loses the truck after this long
+const AD_NAMES_MAX = 500;       // unique names remembered per ad campaign per day
 // How the line reacts (metres per real second).
 const LINE_SPEED = { clashes: 0.25, curfew: 3 };  // advancing speed with no resistance
 const LINE_RETREAT = { clashes: 0.35, curfew: 2 };  // falling back when protesters overwhelm it
@@ -133,13 +140,25 @@ export class GameRoom extends DurableObject {
       const days = Object.entries(this.stats).slice(-14).map(([day, s]) => ({ day: Number(day), joins: s.j, unique: s.u.length, peak: s.pk, ads: s.ads || {} }));
       return Response.json({ online: this.players.size, npcs: this.npcs.size, days });
     }
-    if (this.ctx.getWebSockets().length >= MAX_PLAYERS) {
+    // Count joined players + sockets still waiting to JOIN; close the ones that waited too long.
+    const nowMs = Date.now();
+    let open = 0;
+    for (const sock of this.ctx.getWebSockets()) {
+      const a = sock.deserializeAttachment();
+      if (a && a.id) { open++; continue; }
+      if (a && a.pending && nowMs - a.pending > JOIN_TIMEOUT_MS) {
+        try { sock.close(1008, 'join timeout'); } catch { /* already closed */ }
+        continue;
+      }
+      open++;
+    }
+    if (open >= MAX_PLAYERS) {
       return new Response('Room is full', { status: 503 });
     }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server); // Hibernation API
-    server.serializeAttachment(null); // not joined yet
+    server.serializeAttachment({ pending: nowMs }); // not joined yet
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -191,7 +210,7 @@ export class GameRoom extends DurableObject {
   // Handlers
   // ------------------------------------------------------------------------
   handleJoin(ws, me, msg) {
-    if (me) return; // already joined
+    if (me && me.id) return; // already joined
 
     const name = sanitize(msg.n, MAX_NAME_LENGTH) || 'Anonymous';
     const faction = FACTIONS[msg.f] ? msg.f : DEFAULT_FACTION;
@@ -228,7 +247,7 @@ export class GameRoom extends DurableObject {
   }
 
   handleState(ws, p, msg) {
-    if (!this.applyPosition(p, msg.p, msg.r)) return;
+    if (!this.applyPosition(p, msg.p, msg.r, true)) return;
     // You can only be "in the vehicle" if the server says you own it.
     p.v = msg.v && this.truck.o === p.id ? 1 : 0;
     p.b = msg.b && p.hp > 0 && !p.v ? 1 : 0;
@@ -241,6 +260,7 @@ export class GameRoom extends DurableObject {
       const elapsed = (now - (t.lastMove || now)) / 1000;
       const speed = elapsed > 0 ? Math.hypot(p.x - t.x, p.z - t.z) / elapsed : 0;
       Object.assign(t, { x: p.x, y: p.y, z: p.z, r: p.r, lastMove: now });
+      if (speed > 0.3 || t.sp) this.truckActive = now; // for the AFK check
       if (TRUCK_KNOCKDOWN && speed > TRUCK_HIT_SPEED && speed < 40) this.truckHits(p, speed, now);
     } else {
       this.truck.lastMove = 0;
@@ -255,6 +275,7 @@ export class GameRoom extends DurableObject {
     if (this.truck.o === 0 && closeEnough && p.hp > 0) {
       this.dropCarried(p.id);
       this.truck.o = p.id;
+      this.truckActive = Date.now();
       this.broadcast({ t: MSG.VEHICLE, o: p.id }); // everyone learns the new driver
       this.markDirty();
     } else {
@@ -265,7 +286,8 @@ export class GameRoom extends DurableObject {
   handleExit(p, msg) {
     if (this.truck.o !== p.id) return;
     // Use the final pose the driver sent, if it's valid.
-    if (Array.isArray(msg.p) && msg.p.length === 3 && msg.p.every(Number.isFinite) && Number.isFinite(msg.r)) {
+    if (Array.isArray(msg.p) && msg.p.length === 3 && msg.p.every(Number.isFinite) && Number.isFinite(msg.r)
+        && Math.hypot(msg.p[0] - this.truck.x, msg.p[2] - this.truck.z) < 10) {
       Object.assign(this.truck, { x: round2(msg.p[0]), y: round2(msg.p[1]), z: round2(msg.p[2]), r: round2(msg.r) });
     }
     this.releaseTruck();
@@ -280,7 +302,7 @@ export class GameRoom extends DurableObject {
     if (this.isCarrying(attacker.id)) return;                   // hands full
     if (now - attacker.at < weapon.cooldown - 50) return;       // too fast (50 ms lag tolerance)
     attacker.at = now;
-    this.applyPosition(attacker, msg.p, msg.r);                 // freshest position + aim
+    this.applyPosition(attacker, msg.p, msg.r, true);           // freshest position + aim (speed-checked)
 
     this.broadcast({ t: MSG.SWING, id: attacker.id });          // everyone plays the animation
 
@@ -318,6 +340,8 @@ export class GameRoom extends DurableObject {
     p.hp = MAX_HP;
     p.ko = 0;
     this.applyPosition(p, msg.p, p.r);
+    const base = SPAWNS[p.f] || SPAWNS.g; // you always get back up near your own base
+    if (Math.hypot(p.x - base.x, p.z - base.z) > 8) { p.x = base.x; p.z = base.z; }
     ws.serializeAttachment(p);
     this.markDirty();
   }
@@ -463,7 +487,7 @@ export class GameRoom extends DurableObject {
     const all = [...this.players.values()];
     for (const p of all) {
       const s = SPAWNS[p.f] || SPAWNS.g;
-      Object.assign(p, { hp: MAX_HP, ko: 0, v: 0, b: 0, x: s.x, z: s.z, tg: 0, tgDay: gameDayNumber() });
+      Object.assign(p, { hp: MAX_HP, ko: 0, v: 0, b: 0, x: s.x, z: s.z, pt: 0, tg: 0, tgDay: gameDayNumber() });
       this.sockets.get(p.id)?.serializeAttachment(p);
     }
     for (const n of this.npcs.values()) Object.assign(n, { hp: MAX_HP, ko: 0 });
@@ -495,7 +519,13 @@ export class GameRoom extends DurableObject {
     p.ads = p.ads || [];
     if (p.ads.includes(msg.c)) return; // once per campaign per visit
     p.ads.push(msg.c);
+    // ...and once per player name per campaign per game day, so reconnecting doesn't inflate the numbers.
     const s = this.todayStats();
+    s.adu = s.adu || {};
+    const seen = s.adu[msg.c] || (s.adu[msg.c] = []);
+    const who = p.n.toLowerCase();
+    if (seen.includes(who) || seen.length >= AD_NAMES_MAX) return;
+    seen.push(who);
     s.ads = s.ads || {};
     s.ads[msg.c] = (s.ads[msg.c] || 0) + 1;
     this.statsDue = true;
@@ -531,6 +561,12 @@ export class GameRoom extends DurableObject {
   tick() {
     const now = Date.now();
     this.updateWaterCannon();
+    // Someone sitting in the truck without moving or spraying loses it, so one AFK player can't block it all day.
+    if (this.truck.o && now - (this.truckActive || now) > TRUCK_AFK_MS) {
+      const driverSocket = this.sockets.get(this.truck.o);
+      if (driverSocket) this.send(driverSocket, { t: MSG.NEWS, m: 'You were asleep at the wheel: the truck is free again.' });
+      this.releaseTruck();
+    }
     this.updateFlyingProps(now);
     this.updateNpcs(now);
     this.updateNpcFights(now);
@@ -980,14 +1016,32 @@ export class GameRoom extends DurableObject {
   }
 
   // Validates and stores a position [x,y,z] + rotation sent by a client.
-  applyPosition(player, pos, rot) {
+  // limited = true: refuse impossible jumps (speed / teleport hacks). The player is moved towards the
+  // claimed spot at the maximum allowed speed instead, so honest glitches still sort themselves out.
+  applyPosition(player, pos, rot, limited = false) {
     if (!Array.isArray(pos) || pos.length !== 3) return false;
-    const [x, y, z] = pos.map(Number);
+    let [x, y, z] = pos.map(Number);
     const r = Number(rot ?? player.r);
     if (![x, y, z, r].every(Number.isFinite)) return false;
-    player.x = round2(clamp(x, -WORLD.halfX - 5, WORLD.halfX + 5)); // keep everybody inside the map
+    x = clamp(x, -WORLD.halfX - 5, WORLD.halfX + 5); // keep everybody inside the map
+    z = clamp(z, -WORLD.halfZ - 5, WORLD.halfZ + 5);
+    const now = Date.now();
+    if (limited && player.pt) {
+      // A "movement budget" (metres) that refills at MAX_MOVE_SPEED and holds at most MOVE_BUDGET_MAX,
+      // which absorbs lag spikes. Spamming many small messages can't beat it.
+      const elapsed = Math.min(2, (now - player.pt) / 1000);
+      const budget = Math.min(MOVE_BUDGET_MAX, (player.mb ?? MOVE_BUDGET_MAX) + MAX_MOVE_SPEED * elapsed);
+      const d = Math.hypot(x - player.x, z - player.z);
+      if (d > budget) {
+        x = player.x + ((x - player.x) / d) * budget;
+        z = player.z + ((z - player.z) / d) * budget;
+        player.mb = 0;
+      } else player.mb = budget - d;
+    } else player.mb = MOVE_BUDGET_MAX;
+    player.pt = now;
+    player.x = round2(x);
     player.y = round2(clamp(y, -10, 100));
-    player.z = round2(clamp(z, -WORLD.halfZ - 5, WORLD.halfZ + 5));
+    player.z = round2(z);
     player.r = round2(r);
     return true;
   }

@@ -24,12 +24,22 @@ export function createHud() {
   const lockHint = el('hud-lock');
   lockHint.textContent = 'Click to play — move the mouse to look around · Esc frees the mouse';
   const crosshair = el('hud-crosshair');
+  const hit = el('hud-hit'); // red edge flash when you get hit
+  hit.style.display = 'block';
   water.innerHTML = '<span>Water</span><div class="bar"><div class="fill"></div></div>';
   const waterFill = water.querySelector('.fill');
 
   const show = (node, on) => { node.style.display = on ? 'block' : 'none'; };
 
   return {
+    // Red flash around the screen edge. strength 0..1
+    flashHit(strength = 1) {
+      hit.style.setProperty('--hit', String(Math.min(1, Math.max(0.2, strength))));
+      hit.classList.remove('on');
+      void hit.offsetWidth; // restart the CSS animation
+      hit.classList.add('on');
+    },
+
     setStatus(text) {
       status.textContent = text || '';
       show(status, !!text);

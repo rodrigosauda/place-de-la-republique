@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Place de la République</title>
     <link rel="stylesheet" href="/client/style.css" />
+    <style>#loading{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#1b1d24;color:#fff;font:600 16px system-ui,sans-serif}</style>
   </head>
   <body>
+    <div id="loading"><div>Place de la République</div><div class="bar"><i></i></div><div style="font-size:12px;opacity:.6">Loading Paris…</div></div>
     <!-- Three.js canvas and the name-label layer are added here by client/main.js -->
     <div id="app"></div>
     <script type="module" src="/client/main.js"></script>

@@ -5,7 +5,7 @@
 
 export function setupTouchControls(input, { onChat }) {
   const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  if (!isTouch) return;
+  if (!isTouch) return { setFaction() {} };
 
   const root = document.createElement('div');
   root.className = 'touch-ui';
@@ -17,6 +17,9 @@ export function setupTouchControls(input, { onChat }) {
       <button data-key="KeyE">Truck</button>
       <button data-key="TouchBlock">Block / Spray</button>
       <button data-key="KeyG">Grab / Throw</button>
+      <button data-key="TouchRun">Run</button>
+      <button data-key="KeyC">Dash</button>
+      <button data-key="KeyH" data-police hidden>Tear gas</button>
       <button data-chat>Chat</button>
     </div>`;
   document.body.appendChild(root);
@@ -64,4 +67,11 @@ export function setupTouchControls(input, { onChat }) {
     btn.addEventListener('pointercancel', up);
     btn.addEventListener('pointerleave', up);
   }
+
+  // The tear-gas button is only for the police.
+  return {
+    setFaction(faction) {
+      for (const b of root.querySelectorAll('[data-police]')) b.hidden = faction !== 'c';
+    },
+  };
 }

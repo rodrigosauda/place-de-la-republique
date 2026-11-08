@@ -17,7 +17,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { gameMinutes, GAS_RADIUS, GAS_DURATION_MS, GAS_PICKUP_MS, GAS_PICKUP_RANGE, inSafeZone, PLAZA } from '../../shared/constants.js';
 import { phaseAt, policeLine, linePhase, meleeCenters, MELEE_RADIUS } from '../../shared/timeline.js';
 
-const N_CROWD = 110;
+const N_CROWD_LOW = 110, N_CROWD_FULL = 200; // the full quality draws almost twice as many extras (each part is one instanced mesh)
 const LINE_COPS = 20;   // officers in the shield line
 const FIGHT_COPS = 36;  // officers brawling in the middle
 const FIGHTERS = 40;    // protesters brawling (paired with an officer)
@@ -125,12 +125,15 @@ function bodyGeometries() {
   baguette.rotateX(Math.PI / 2);
   baguette.translate(0, -0.52, 0.25);
   const sign = new THREE.BoxGeometry(0.72, 0.48, 0.025);
+  const flag = new THREE.PlaneGeometry(0.95, 0.62);
+  flag.translate(0.475, 0, 0); // hinged on the pole so it waves from one edge
   const stick = new THREE.CylinderGeometry(0.018, 0.018, 1.0, 5);
-  return { leg, arm, torso, vest, head, hair, helmet, visor, shield, baton, baguette, sign, stick };
+  return { leg, arm, torso, vest, head, hair, helmet, visor, shield, baton, baguette, sign, stick, flag };
 }
 
 export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
   const G = bodyGeometries();
+  const NC = lowQuality ? N_CROWD_LOW : N_CROWD_FULL;
   const color = new THREE.Color();
   const mat = (c, extra = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, ...extra });
   const meshes = [];
@@ -148,20 +151,41 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
 
   // ------------------------------------------------------------- the crowd
   const C = {
-    torso: inst(G.torso, mat(0xffffff), N_CROWD),
-    vest: inst(G.vest, mat(0xf7d417, { emissive: 0x2a2400 }), N_CROWD),
-    head: inst(G.head, mat(0xffffff), N_CROWD),
-    hair: inst(G.hair, mat(0xffffff), N_CROWD),
-    legL: inst(G.leg, mat(0xffffff), N_CROWD),
-    legR: inst(G.leg, mat(0xffffff), N_CROWD),
-    armL: inst(G.arm, mat(0xffffff), N_CROWD),
-    armR: inst(G.arm, mat(0xffffff), N_CROWD),
-    sign: inst(G.sign, mat(0xffffff), N_CROWD),
-    stick: inst(G.stick, mat(0x8b5a2b), N_CROWD),
-    bread: inst(G.baguette, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }), N_CROWD),
+    torso: inst(G.torso, mat(0xffffff), NC),
+    vest: inst(G.vest, mat(0xf7d417, { emissive: 0x2a2400 }), NC),
+    head: inst(G.head, mat(0xffffff), NC),
+    hair: inst(G.hair, mat(0xffffff), NC),
+    legL: inst(G.leg, mat(0xffffff), NC),
+    legR: inst(G.leg, mat(0xffffff), NC),
+    armL: inst(G.arm, mat(0xffffff), NC),
+    armR: inst(G.arm, mat(0xffffff), NC),
+    sign: inst(G.sign, mat(0xffffff), NC),
+    stick: inst(G.stick, mat(0x8b5a2b), NC),
+    bread: inst(G.baguette, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }), NC),
+    flag: inst(G.flag, new THREE.MeshStandardMaterial({ roughness: 0.9, side: THREE.DoubleSide }), NC), // flags on tall poles
   };
+  // Big banners carried by two people (a texture each, so the words are readable).
+  const BANNER_TEXTS = ['WAGES FIRST', 'OUR FUTURE', 'WE ARE HERE', 'FAIR PRICES'];
+  const BANNER_BG = ['#c8102e', '#1f4fb4', '#f4f1ea', '#2f8f4e'];
+  const BANNER_INK = ['#ffffff', '#ffffff', '#c8102e', '#ffffff'];
+  const bannerMeshes = lowQuality ? [] : BANNER_TEXTS.map((text, k) => {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 160;
+    const g = c.getContext('2d');
+    g.fillStyle = BANNER_BG[k]; g.fillRect(0, 0, 512, 160);
+    g.strokeStyle = BANNER_INK[k]; g.lineWidth = 8; g.strokeRect(10, 10, 492, 140);
+    g.fillStyle = BANNER_INK[k]; g.font = '900 64px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, 256, 84);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return inst(new THREE.PlaneGeometry(1, 0.31), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide }), 2);
+  });
+  const bannerPoles = lowQuality ? null : inst(G.stick, mat(0x8b5a2b), 16); // two poles per banner
+  // Pair k of banner carriers: two extras that are not fighting, walking side by side.
+  const BANNER_PAIRS = lowQuality ? [] : Array.from({ length: 8 }, (_, k) => [FIGHTERS + 8 + k * 7, FIGHTERS + 9 + k * 7]);
+  const FLAG_COLORS = [0xc8102e, 0x1f4fb4, 0x2f8f4e, 0xf4f1ea, 0xf7d417, 0xe0662a];
   const crowd = [];
-  for (let i = 0; i < N_CROWD; i++) {
+  for (let i = 0; i < NC; i++) {
     const r = seeded(i * 7919 + 13);
     const a = {
       x: -30 + r() * 40, z: -20 + r() * 20, rot: r() * 6.28,
@@ -170,10 +194,13 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
       phase: r() * 6.28, speed: 1.15 + r() * 0.45,
       stride: 0, moving: 0,
       height: 0.92 + r() * 0.16, wide: 0.9 + r() * 0.25,
-      vest: r() < 0.72, sign: r() < 0.32, flare: r() < 0.05,
+      vest: r() < 0.72, sign: r() < 0.32, flare: r() < 0.05, flagger: false,
       visible: false, koUntil: 0, kx: 0, kz: 0, punchT: -1,
     };
     crowd.push(a);
+    if (i >= FIGHTERS && !lowQuality && seeded(i * 104729 + 7)() < 0.1 && !BANNER_PAIRS.some((p) => p.includes(i))) { a.sign = true; a.flagger = true; } // 1 in 10 carries a flag
+    if (BANNER_PAIRS.some((p) => p.includes(i))) a.sign = false;
+    C.flag.setColorAt(i, color.set(FLAG_COLORS[i % FLAG_COLORS.length]));
     const top = TOP_COLORS[Math.floor(r() * TOP_COLORS.length)];
     const skin = SKIN[Math.floor(r() * SKIN.length)];
     const pants = PANTS_COLORS[Math.floor(r() * PANTS_COLORS.length)];
@@ -265,7 +292,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
   const flareLight = new THREE.PointLight(0xff2a1a, 0, 14, 1.5);
   flareLight.userData.noMerge = true;
   scene.add(flareLight);
-  const flares = inst(new THREE.SphereGeometry(0.07, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff3a22 }), N_CROWD);
+  const flares = inst(new THREE.SphereGeometry(0.07, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff3a22 }), NC);
   flares.castShadow = false;
 
   // ------------------------------------------------------- helicopter
@@ -495,7 +522,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
       // ---- crowd: steer towards those spots, keep apart, animate
       let cx = 0, cz = 0, count = 0;
       const turn = 1 - Math.exp(-5 * dt);
-      for (let i = 0; i < N_CROWD; i++) {
+      for (let i = 0; i < NC; i++) {
         const a = crowd[i];
         a.visible = true;
         const ko = a.koUntil > now;
@@ -511,6 +538,13 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
           const rad = (H.ring ? 21 : MELEE_RADIUS + 3) + r() * 7 - 3 * Math.max(0, Math.sin(tReal * 0.6 + a.phase));
           target = inPlazaClamp({ x: H.x + Math.cos(ang) * rad, z: H.z + Math.sin(ang) * rad * (H.ring ? 0.95 : 0.8) });
           target.face = Math.atan2(H.x - target.x, H.z - target.z);
+          // The second banner carrier walks 2.3 m beside the first one, so the banner stays stretched between them.
+          const bp = BANNER_PAIRS.find((pair) => pair[1] === i);
+          if (bp) {
+            const T = crowd[bp[0]].target, f = T.face;
+            target = inPlazaClamp({ x: T.x + Math.cos(f) * 2.3, z: T.z - Math.sin(f) * 2.3 });
+            target.face = f;
+          }
         }
         if (firstFrame) { a.x = target.x; a.z = target.z; }
         if (ko) {
@@ -537,9 +571,9 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         count++; cx += a.x; cz += a.z;
       }
       // Keep apart from each other and from players (step aside instead of walking through).
-      for (let i = 0; i < N_CROWD; i++) {
+      for (let i = 0; i < NC; i++) {
         const a = crowd[i];
-        for (let j = i + 1; j < N_CROWD; j++) {
+        for (let j = i + 1; j < NC; j++) {
           const b = crowd[j];
           const dx = a.x - b.x, dz = a.z - b.z;
           if (Math.abs(dx) > 0.7 || Math.abs(dz) > 0.7) continue;
@@ -566,7 +600,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
       };
 
       // Draw every extra.
-      for (let i = 0; i < N_CROWD; i++) {
+      for (let i = 0; i < NC; i++) {
         const a = crowd[i];
         const tg = a.target;
         const ko = a.koUntil > now || tg.down;
@@ -597,11 +631,19 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         if ((!a.sign || tg.fight) && a.vest) place(C.bread, i, -0.27, 1.38, 0, armR, 0, -0.08); // swinging a baguette
         else C.bread.setMatrixAt(i, HIDDEN);
         if (raise) {
-          // Left arm up holding the stick and the sign above the head.
+          // Left arm up holding the stick and the sign above the head (or a flag on a taller pole).
           place(C.armL, i, 0.27, 1.38, 0, -Math.PI + 0.25, 0, 0.1);
-          place(C.stick, i, 0.3, 2.05, 0.08);
-          place(C.sign, i, 0.3, 2.55, 0.08, 0, Math.sin(tReal * 1.5 + a.phase) * 0.15);
+          if (a.flagger) {
+            place(C.stick, i, 0.3, 2.4, 0.08, 0, 0, 0, 1, 1.5, 1);
+            place(C.flag, i, 0.3, 3.0, 0.08, 0, Math.sin(tReal * 3 + a.phase) * 0.35, 0);
+            C.sign.setMatrixAt(i, HIDDEN);
+          } else {
+            place(C.stick, i, 0.3, 2.05, 0.08);
+            place(C.sign, i, 0.3, 2.55, 0.08, 0, Math.sin(tReal * 1.5 + a.phase) * 0.15);
+            C.flag.setMatrixAt(i, HIDDEN);
+          }
         } else {
+          C.flag.setMatrixAt(i, HIDDEN);
           place(C.armL, i, 0.27, 1.38, 0, tg.fight && !ko ? -0.9 : swing * 0.8, 0, 0.08); // guard up when fighting
           C.stick.setMatrixAt(i, HIDDEN);
           C.sign.setMatrixAt(i, HIDDEN);
@@ -612,7 +654,33 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
           place(flares, i, -0.3, 2.0 + Math.random() * 0.05, 0.2, 0, 0, 0, 1.3, 1.3, 1.3);
         } else flares.setMatrixAt(i, HIDDEN);
       }
+      // Banners between pairs of carriers: only while both are walking close together and on their feet.
+      if (BANNER_PAIRS.length) {
+        const flagBase = new THREE.Matrix4();
+        BANNER_PAIRS.forEach(([ia, ib], k) => {
+          const A = crowd[ia], B = crowd[ib];
+          const mesh = bannerMeshes[k % bannerMeshes.length], slot = Math.floor(k / bannerMeshes.length);
+          const dx = B.x - A.x, dz = B.z - A.z, d = Math.hypot(dx, dz);
+          const show = d < 6 && A.koUntil <= now && B.koUntil <= now && !A.target.fight && !B.target.fight && !A.target.down && !B.target.down;
+          if (!show) {
+            mesh.setMatrixAt(slot, HIDDEN);
+            bannerPoles.setMatrixAt(k * 2, HIDDEN); bannerPoles.setMatrixAt(k * 2 + 1, HIDDEN);
+            return;
+          }
+          const mx = (A.x + B.x) / 2, mz = (A.z + B.z) / 2, yaw = Math.atan2(dx, dz) - Math.PI / 2; // plane faces along the walking direction
+          const width = Math.max(1.4, d + 0.4);
+          flagBase.compose(v.set(mx, 2.55 + Math.sin(tReal * 2 + k) * 0.03, mz), q.setFromEuler(e.set(0, yaw, 0)), one.set(width, 1, 1));
+          mesh.setMatrixAt(slot, flagBase);
+          for (const [n, P] of [[0, A], [1, B]]) {
+            flagBase.compose(v.set(P.x, 1.75, P.z), q.identity(), one.set(1, 1.5, 1));
+            bannerPoles.setMatrixAt(k * 2 + n, flagBase);
+          }
+        });
+        for (const mesh of bannerMeshes) mesh.instanceMatrix.needsUpdate = true;
+        bannerPoles.instanceMatrix.needsUpdate = true;
+      }
       for (const k in C) C[k].instanceMatrix.needsUpdate = true;
+      if (C.flag.instanceColor) C.flag.instanceColor.needsUpdate = true;
       flares.instanceMatrix.needsUpdate = true;
       state.crowdCount = count;
       if (count) state.centroid.set(cx / count, 0, cz / count);

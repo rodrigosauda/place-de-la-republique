@@ -81,14 +81,15 @@ export const sfx = {
   },
 
   whoosh(v = 1) { if (ready() && v > 0) noise(0.22, 0.5 * v, 300, 3000); },
-  bonk(v = 1) { if (ready() && v > 0) { tone('square', 520, 140, 0.18, 0.35 * v); tone('sine', 900, 300, 0.1, 0.2 * v); } },
+  // Hits vary a little every time (pitch) so a brawl does not sound like one looped sample.
+  bonk(v = 1) { if (ready() && v > 0) { const j = 0.8 + Math.random() * 0.45; tone('square', 520 * j, 140 * j, 0.18, 0.35 * v); tone('sine', 900 * j, 300 * j, 0.1, 0.2 * v); noise(0.06, 0.18 * v, 1800, 500, 'lowpass'); } },
   clang(v = 1) { if (ready() && v > 0) { tone('triangle', 1800, 1500, 0.35, 0.25 * v); tone('square', 2400, 2000, 0.15, 0.08 * v); } },
-  ko(v = 1) { if (ready() && v > 0) { tone('sine', 700, 120, 0.7, 0.35 * v); } },
+  ko(v = 1) { if (ready() && v > 0) { tone('sine', 700, 120, 0.7, 0.35 * v); tone('sine', 120, 45, 0.35, 0.5 * v); noise(0.25, 0.25 * v, 900, 150, 'lowpass'); } },
   pop() { if (ready()) tone('sine', 600, 900, 0.08, 0.15); },
   splash(v = 1) { if (ready() && v > 0) noise(0.3, 0.3 * v, 2000, 600, 'lowpass'); },
 
   // Rubber chicken: a squeaky honk that bends down in pitch.
-  squeak(v = 1) { if (ready() && v > 0) { tone('square', 1300, 700, 0.22, 0.18 * v); tone('sine', 1900, 900, 0.18, 0.12 * v); } },
+  squeak(v = 1) { if (ready() && v > 0) { const j = 0.85 + Math.random() * 0.4; tone('square', 1300 * j, 700 * j, 0.22, 0.18 * v); tone('sine', 1900 * j, 900 * j, 0.18, 0.12 * v); } },
   cough(v = 1) { if (ready() && v > 0) { noise(0.12, 0.35 * v, 900, 400); setTimeout(() => ready() && noise(0.14, 0.3 * v, 800, 350), 180); } },
   shutter() { if (ready()) { noise(0.04, 0.4, 4000, 3000, 'highpass'); setTimeout(() => ready() && noise(0.05, 0.3, 3000, 2500, 'highpass'), 70); } },
   gasPop(v = 1) { if (ready() && v > 0) { tone('sine', 180, 60, 0.15, 0.4 * v); noise(1.2, 0.25 * v, 3000, 1500, 'highpass'); } },

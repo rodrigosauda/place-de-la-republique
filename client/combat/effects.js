@@ -175,7 +175,8 @@ export class CharacterFx {
 // Floating "BONK!" text that rises and fades (CSS animation in style.css).
 export function showBonk(scene, position, text = 'BONK!') {
   const div = document.createElement('div');
-  div.className = 'bonk';
+  div.className = 'bonk' + (text.startsWith('K.O') || text === 'BOOM!' ? ' big' : '');
+  div.style.setProperty('--rot', `${Math.round((Math.random() - 0.5) * 24)}deg`); // every word is tilted a little differently
   div.textContent = text;
   const label = new CSS2DObject(div);
   label.position.set(position.x, position.y + 1.4, position.z);

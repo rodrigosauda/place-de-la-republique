@@ -43,6 +43,7 @@ import { createHud } from './ui/hud.js';
 import { createChat } from './ui/chat.js';
 import { setupTouchControls } from './ui/touchControls.js';
 import { showBonk } from './combat/effects.js';
+import { createImpacts } from './combat/impact.js';
 import { sfx } from './audio/sfx.js';
 import { createBottomBar } from './ui/bottomBar.js';
 import { saveLook } from './ui/outfitEditor.js';
@@ -69,6 +70,8 @@ async function start() {
   const dayNight = setupDayNight(scene, lighting, physics, world.nightMaterials, atmosphere, world.lamps, world);
   const weather = createWeather(scene);
   const bigScreen = createBigScreen(scene);
+  const impacts = createImpacts(scene); // crumbs, feathers, sparks and stars when something is hit
+  let hitStopUntil = 0;                  // a few frames of freeze on a solid hit
   const bases = buildBases(scene, physics); // police buses + café: where each side starts
   mergeStaticMeshes(scene); // glue the static city together = much faster rendering
   // Everything static is now merged: these are the walls you can spray tags on.
@@ -217,7 +220,7 @@ async function start() {
       const look = arrayToLook(lookArr);
       if (remotes.has(id)) { remotes.get(id).setLook(look); continue; } // outfit may have changed
       remotes.set(id, new RemotePlayer(scene, physics, id, name, faction, slogan, isNpc === 1, look,
-        [ROLES[roleCode]?.icon, badgeText(stars)].filter(Boolean).join(' ')));
+        [ROLES[roleCode]?.icon, badgeText(stars)].filter(Boolean).join(' '), roleCode || ''));
     }
     for (const [id, remote] of remotes) { // remove players who left
       if (!present.has(id)) {
@@ -379,7 +382,7 @@ async function start() {
   net.onCrowd = ({ i, k }) => {
     riot.knockDown(i, k[0], k[1]);
     const a = i >= 1000 ? riot.police[i - 1000] : riot.crowd[i];
-    if (a && local) { const p = new THREE.Vector3(a.x, 1, a.z); showBonk(scene, p, 'BONK!'); sfx.bonk(volumeAt(p)); }
+    if (a && local) { const p = new THREE.Vector3(a.x, 1, a.z); showBonk(scene, p, 'BONK!'); sfx.bonk(volumeAt(p)); impacts.burst(p, 'hit', 0xd9a45b); }
   };
   // New day: everything goes back to where it started (bins, truck, graffiti, you).
   net.onReset = () => {
@@ -459,7 +462,12 @@ async function start() {
       if (by === net.myId) cam.shake(hp <= 0 ? 0.18 : 0.08); // landing a hit feels good too
       if (by === net.myId && hp <= 0) progress?.event('ko'); // violence resets the peaceful-play mission
     }
-    showBonk(scene, pos, byTruck ? text : hp <= 0 ? text : attackerFaction === 'c' ? 'SQUEAK!' : 'CRUNCH!');
+    const WORDS = attackerFaction === 'c' ? ['SQUEAK!', 'HONK!', 'SQUEE!', 'BOINK!'] : ['CRUNCH!', 'WHACK!', 'THWACK!', 'BAGUETTE!'];
+    showBonk(scene, pos, byTruck || hp <= 0 ? text : WORDS[Math.floor(Math.random() * WORDS.length)]);
+    const burstAt = tmp.copy(pos).setY(pos.y + 0.6);
+    if (hp <= 0) impacts.burst(burstAt, 'ko');
+    else impacts.burst(burstAt, 'hit', attackerFaction === 'c' ? 0xf2d230 : 0xd9a45b); // rubber-chicken feathers / baguette crumbs
+    if (id === net.myId || by === net.myId) hitStopUntil = performance.now() + (hp <= 0 ? 130 : 55); // the game "hangs" for a heartbeat
     const v = id === net.myId ? 1 : volumeAt(pos);
     if (attackerFaction === 'c') sfx.squeak(v); else sfx.bonk(v);
     if (hp <= 0) sfx.ko(v);
@@ -470,6 +478,7 @@ async function start() {
     if (!target) return;
     const pos = id === net.myId ? local.position : target.mesh.position;
     showBonk(scene, pos, 'BLOCK!');
+    impacts.burst(tmp.copy(pos).setY(pos.y + 0.7), 'block');
     sfx.clang(id === net.myId ? 1 : volumeAt(pos));
     if (id === net.myId) { cam.shake(0.1); progress?.event('block'); }
   };
@@ -587,7 +596,7 @@ async function start() {
     const s = SPAWNS[faction];
     const angle = Math.random() * Math.PI * 2;
     const spawn = { x: s.x + Math.cos(angle) * s.radius * Math.random(), z: s.z + Math.sin(angle) * s.radius * Math.random() };
-    local = new LocalPlayer({ scene, physics, name, faction, slogan, look, spawn });
+    local = new LocalPlayer({ scene, physics, name, faction, slogan, look, spawn, role: net.role });
     net.look = lookToArray(look);
     bar.show();
     local.facing = Math.atan2(-spawn.x, -spawn.z); // face the monument
@@ -667,8 +676,8 @@ async function start() {
 
   renderer.setAnimationLoop(() => {
     const rawDt = clock.getDelta();
-    const dt = Math.min(rawDt, 0.05); // clamp: avoids huge jumps after tab switch
     const now = performance.now();
+    const dt = Math.min(rawDt, 0.05) * (now < hitStopUntil ? 0.04 : 1); // clamp: avoids huge jumps after tab switch; hit-stop slows time to a crawl
     adaptResolution(Math.min(rawDt, 0.25), now); // measured on real frame times (a long pause doesn't count)
     const driving = local?.inVehicle;
 
@@ -747,6 +756,7 @@ async function start() {
     updateMinimap(minutes);
     updateRiot(dt, minutes, now);
     bases.update(now / 1000);
+    impacts.update(rawDt > 0.1 ? 0.016 : rawDt);
 
     if (local) adBanner.update(dt, cam.camera);
     atmosphere.render(cam.camera);

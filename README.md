@@ -116,7 +116,7 @@ Slow computer? Add `?quality=low` to the link (no shadows, fewer details).
 - NPCs: the last 20 players who joined walk around the square while they're offline, and chant.
 - Haussmann-style Paris: stone façades, iron balconies, zinc roofs, shops with awnings, Morris columns,
   Wallace fountains, métro entrances, café terrace, water mirror, the Monument à la République with the lion.
-- Day/night cycle (1 game day = 12 real minutes). Curfew 23:00–06:00: the side with the most players
+- Day/night cycle (1 game day = 12 real minutes, but not evenly: the night 00:00-06:00 takes 40 s, the morning 06:00-09:00 takes 60 s, 09:00-23:00 takes 40 s per game hour and 23:00-24:00 takes 60 s, so most of the real time goes to the march and the clashes; see `CLOCK_SEGMENTS` in `shared/constants.js`). Curfew 23:00–06:00: the side with the most players
   on the plaza scores every 5 s. Scores reset at 06:00. Big screen with score + clock.
 - Characters with arms/legs (man, woman, papy, mamie) and an outfit editor with a live 3D preview:
   skin, hair, tops (incl. marinière), trousers, hats (beret, bonnet phrygien…), face (sunglasses, scarf,
@@ -243,6 +243,16 @@ last finished day ended (`/last`, public and tiny) and your streak, and the end-
 lowers its resolution by itself if the frame rate stays under about 30 fps (and raises it again when there is room).
 Rain wets the ground and softens the shadows. Audio is still synthesized (no sound files): crowd murmur, rhythmic chanting,
 distant sirens, helicopter, rain with drips, drum phrases, camera shutter.
+
+## Feel: hit-stop, debris, crowd, role gear
+
+- **Hits**: a brief freeze (about 55 ms, 130 ms on a K.O.) when you land or take a hit, camera shake, a burst of crumbs
+  or rubber-chicken feathers (`client/combat/impact.js`), a ring on the ground and extra stars on a K.O., block sparks, a
+  different word every time (CRUNCH / WHACK / SQUEAK / HONK...), and pitch-varied hit sounds.
+- **Crowd**: 200 extras at full quality (110 with `?quality=low`), one in ten carries a waving flag on a tall pole, and eight
+  pairs carry readable banners ("WAGES FIRST", "OUR FUTURE"...) that stay stretched between the two walkers.
+- **Role gear you can see from far away**: the medic has white armbands and red crosses, the journalist a blue PRESS
+  tabard and a camera, the drummer a drum on the belly (`addRoleGear` in `client/player/playerMesh.js`).
 
 ## Social layer: online counts, missions, badges, spectating
 

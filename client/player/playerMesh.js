@@ -52,7 +52,7 @@ function add(parent, geo, material, x, y, z, { rx = 0, ry = 0, rz = 0, shadow = 
   return m;
 }
 
-export function createPlayerMesh(name, faction, isLocal = false, slogan = '', isNpc = false, lookIn = null, badge = '') {
+export function createPlayerMesh(name, faction, isLocal = false, slogan = '', isNpc = false, lookIn = null, badge = '', role = '') {
   const look = { ...defaultLook(faction), ...(lookIn || {}) };
   const body = BODIES[look.body]?.id ?? 'man';
   const female = body === 'woman' || body === 'oldwoman';
@@ -164,6 +164,8 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
     return sh;
   });
 
+  if (role) addRoleGear(torso, arms, role);
+
   // Weapons in the right hand: 0 = baguette (Yellow Vests), 1 = rubber chicken (Riot Police).
   const weaponPivot = new THREE.Group();
   weaponPivot.position.set(0, -0.6, 0);
@@ -267,6 +269,40 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
     group.traverse((o) => o.geometry?.dispose());
   };
   return group;
+}
+
+// ---------------------------------------------------------------------------
+// Role gear you can see from afar: a medic's white armbands and red crosses, a journalist's blue
+// PRESS tabard and camera, a drummer's drum on the belly (optional roles, see ROLES in constants.js).
+function addRoleGear(torso, arms, role) {
+  const plane = (w, h, draw, x, y, z, ry = 0) => {
+    const tex = canvasTexture(128, Math.round(128 * h / w), draw);
+    add(torso, new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, transparent: true }), x, y, z, { ry, shadow: false });
+  };
+  if (role === 'm') {
+    const cross = (g) => {
+      g.fillStyle = '#f7f7f7'; g.beginPath(); g.arc(64, 64, 62, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#d6202d'; g.fillRect(52, 20, 24, 88); g.fillRect(20, 52, 88, 24);
+    };
+    plane(0.2, 0.2, cross, 0, 0.52, 0.152);       // chest
+    plane(0.26, 0.26, cross, 0, 0.48, -0.152, Math.PI); // back
+    for (const sh of arms) add(sh, new THREE.CylinderGeometry(0.085, 0.085, 0.1, 12), mat(0xf4f4f4), 0, -0.2, 0);
+    for (const sh of arms) add(sh, new THREE.BoxGeometry(0.02, 0.07, 0.09), mat(0xd6202d), 0, -0.2, 0.082, { shadow: false });
+  } else if (role === 'j') {
+    const press = (g) => {
+      g.fillStyle = '#1e56c8'; g.fillRect(0, 0, 128, 40);
+      g.fillStyle = '#ffffff'; g.font = '900 30px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('PRESS', 64, 22);
+    };
+    plane(0.3, 0.1, press, 0, 0.58, 0.146);
+    plane(0.34, 0.11, press, 0, 0.58, -0.15, Math.PI);
+    add(torso, new THREE.BoxGeometry(0.2, 0.13, 0.1), mat(0x1a1a1c), 0, 0.4, 0.2);                       // camera body
+    add(torso, new THREE.CylinderGeometry(0.045, 0.05, 0.09, 12), mat(0x9aa3ad, { metalness: 0.5 }), 0, 0.4, 0.28, { rx: Math.PI / 2 }); // lens
+    add(torso, new THREE.CylinderGeometry(0.012, 0.012, 0.3, 5), mat(0x1a1a1c), 0, 0.57, 0.12, { shadow: false }); // strap
+  } else if (role === 'd') {
+    add(torso, new THREE.CylinderGeometry(0.2, 0.2, 0.22, 16), mat(0xb3262e), 0, 0.12, 0.3, { rx: Math.PI / 2 });
+    for (const z of [0.41, 0.19]) add(torso, new THREE.CylinderGeometry(0.205, 0.205, 0.015, 16), mat(0xf4f1ea), 0, 0.12, z, { rx: Math.PI / 2, shadow: false });
+    add(torso, new THREE.CylinderGeometry(0.015, 0.015, 0.34, 5), mat(0x1a1a1c), 0.14, 0.52, 0.12, { rz: 0.5, shadow: false }); // strap over the shoulder
+  }
 }
 
 // ---------------------------------------------------------------------------

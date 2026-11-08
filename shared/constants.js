@@ -205,15 +205,35 @@ export const CURFEW_SCORE_EVERY_MS = 5000; // during curfew, +1 point every 5 s 
 // Minutes since midnight in the game, e.g. 1380 = 23:00.
 // For testing only: shift the game clock (never set in the live game).
 const clockOffset = () => globalThis.__clockOffset || 0;
+// The 12 real minutes are NOT spread evenly over the 24 game hours: the quiet night is quick,
+// and most of the real time goes to the march, the clashes and the evening. [from h, to h, real seconds]
+const CLOCK_SEGMENTS = [[0, 6, 40], [6, 9, 60], [9, 23, 560], [23, 24, 60]];
+const SEGMENT_START = CLOCK_SEGMENTS.reduce((acc, s) => [...acc, acc[acc.length - 1] + s[2]], [0]); // real seconds where each segment starts
 export function gameMinutes(nowMs = Date.now()) {
-  return (((nowMs + clockOffset()) % GAME_DAY_MS) / GAME_DAY_MS) * 1440;
+  const t = (((nowMs + clockOffset()) % GAME_DAY_MS) / 1000); // seconds into the cycle
+  for (let i = 0; i < CLOCK_SEGMENTS.length; i++) {
+    const [h0, h1, secs] = CLOCK_SEGMENTS[i];
+    if (t < SEGMENT_START[i] + secs || i === CLOCK_SEGMENTS.length - 1) {
+      return (h0 + ((t - SEGMENT_START[i]) / secs) * (h1 - h0)) * 60;
+    }
+  }
+  return 0;
+}
+// Real milliseconds into the cycle at which the game clock reads `minutes` (inverse of gameMinutes).
+export function cycleMsAtMinutes(minutes) {
+  const h = minutes / 60;
+  for (let i = 0; i < CLOCK_SEGMENTS.length; i++) {
+    const [h0, h1, secs] = CLOCK_SEGMENTS[i];
+    if (h <= h1 || i === CLOCK_SEGMENTS.length - 1) return (SEGMENT_START[i] + ((h - h0) / (h1 - h0)) * secs) * 1000;
+  }
+  return 0;
 }
 export function isCurfew(minutes) {
   return minutes >= CURFEW_START || minutes < CURFEW_END;
 }
 // Which game day it is (changes every GAME_DAY_MS). Used to reset scores at 06:00.
 export function gameDayNumber(nowMs = Date.now()) {
-  return Math.floor((nowMs + clockOffset() - (CURFEW_END / 1440) * GAME_DAY_MS) / GAME_DAY_MS);
+  return Math.floor((nowMs + clockOffset() - cycleMsAtMinutes(CURFEW_END)) / GAME_DAY_MS);
 }
 export function formatClock(minutes) {
   const h = Math.floor(minutes / 60);

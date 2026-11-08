@@ -14,8 +14,9 @@ import { MAX_HP } from '../../shared/constants.js';
 const TELEPORT_DISTANCE = 8;
 
 export class RemotePlayer {
-  constructor(scene, physics, id, name, faction, slogan, isNpc = false, look = null, badge = '') {
+  constructor(scene, physics, id, name, faction, slogan, isNpc = false, look = null, badge = '', role = '') {
     this.badge = badge;
+    this.role = role;
     this.isNpc = isNpc;
     this.slogan = slogan;
     this.lookKey = JSON.stringify(look);
@@ -28,7 +29,7 @@ export class RemotePlayer {
     this.inVehicle = false;
     this.hasPose = false;
     this.hp = MAX_HP;
-    this.mesh = createPlayerMesh(name, faction, false, slogan, isNpc, look, badge);
+    this.mesh = createPlayerMesh(name, faction, false, slogan, isNpc, look, badge, role);
     this.mesh.visible = false; // hidden until the first snapshot arrives
     this.fx = new CharacterFx(this.mesh);
     scene.add(this.mesh);
@@ -89,7 +90,7 @@ export class RemotePlayer {
     if (key === this.lookKey) return;
     this.lookKey = key;
     const old = this.mesh;
-    this.mesh = createPlayerMesh(this.name, this.faction, false, this.slogan, this.isNpc, look, this.badge);
+    this.mesh = createPlayerMesh(this.name, this.faction, false, this.slogan, this.isNpc, look, this.badge, this.role);
     this.mesh.position.copy(old.position);
     this.mesh.rotation.y = old.rotation.y;
     this.mesh.visible = old.visible;

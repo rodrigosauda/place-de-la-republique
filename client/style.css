@@ -95,10 +95,12 @@ canvas { display: block; touch-action: none; }
   animation: bonk 0.8s ease-out forwards;
   pointer-events: none;
 }
+.bonk.big { font-size: 32px; color: #fff3a0; text-shadow: 3px 3px 0 #b3261e, -2px -2px 0 #000; }
 @keyframes bonk {
-  0% { transform: translateY(0) scale(0.6); opacity: 1; }
-  30% { transform: translateY(-10px) scale(1.2); }
-  100% { transform: translateY(-40px) scale(1); opacity: 0; }
+  0% { transform: translateY(0) rotate(var(--rot, 0deg)) scale(0.4); opacity: 1; }
+  18% { transform: translateY(-8px) rotate(var(--rot, 0deg)) scale(1.55); }
+  35% { transform: translateY(-14px) rotate(var(--rot, 0deg)) scale(1.2); }
+  100% { transform: translateY(-44px) rotate(var(--rot, 0deg)) scale(1); opacity: 0; }
 }
 
 /* ---------- clock, curfew, score (top right) ---------- */

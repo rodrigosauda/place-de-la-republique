@@ -19,15 +19,16 @@ const DASH_MS = 220;
 export const DASH_COOLDOWN_MS = 1500;
 
 export class LocalPlayer {
-  constructor({ scene, physics, name, faction, slogan, look, spawn }) {
+  constructor({ scene, physics, name, faction, slogan, look, spawn, role = '' }) {
     this.slogan = slogan;
+    this.role = role;
     this.look = look;
     this.name = name;
     this.faction = faction;
     this.physics = physics;
     this.scene = scene;
 
-    this.mesh = createPlayerMesh(name, faction, true, slogan, false, look);
+    this.mesh = createPlayerMesh(name, faction, true, slogan, false, look, '', role);
     scene.add(this.mesh);
     this.fx = new CharacterFx(this.mesh);
     this.speed = 0;          // ground speed this frame (for the walk animation)
@@ -185,7 +186,7 @@ export class LocalPlayer {
   setLook(look) {
     this.look = look;
     const old = this.mesh;
-    this.mesh = createPlayerMesh(this.name, this.faction, true, this.slogan, false, look);
+    this.mesh = createPlayerMesh(this.name, this.faction, true, this.slogan, false, look, '', this.role);
     this.mesh.position.copy(old.position);
     this.mesh.rotation.y = old.rotation.y;
     this.mesh.visible = old.visible;

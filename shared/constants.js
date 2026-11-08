@@ -22,7 +22,7 @@ export const INTERP_DELAY_MS = 150;
 // ---------------------------------------------------------------------------
 export const MSG = {
   // client -> server
-  JOIN: 'j',        // { t, n: name, f: faction, s: slogan, l: look array, ro?: role code, bd?: badge 0-3, p?: [x,y,z], r? } (p = keep position after a reconnect)
+  JOIN: 'j',        // { t, n: name, f: faction, s: slogan, l: look array, ro?: role code, bd?: badge 0-3, p?: [x,y,z], r?, sp?: 1 = just watch } (p = keep position after a reconnect)
   ABILITY: 'z',     // { t }                 use my role's ability (R key): treat / photograph / drum
   LOOK: 'L',        // { t, l: look array }  I changed my outfit
   EMOTE: 'm',       // { t, e }              play emote number e (see EMOTE_LIST)
@@ -65,6 +65,7 @@ export const MSG = {
   CROWD_OUT: 'I',   // { t, i, k: [kx, kz], by }         a background extra was knocked down
   SUMMARY: 'U',     // { t, ... }                        end-of-day summary (at 06:00)
   ABILITY_OUT: 'Q', // { t, id, k: role, ok: 0|1, to?: id, hp? }  someone used a role ability (ok 0 = nothing to do)
+  BOARD: 'D',       // { t, l: [[name, faction, points], ...] }  today's top 5 (live leaderboard)
   ERROR: 'E',       // { t, m: message }
 };
 

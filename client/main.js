@@ -11,11 +11,12 @@ import * as THREE from 'three';
 import {
   MSG, TICK_MS, SPAWNS, VEHICLE_ENTER_DISTANCE, FACTIONS, MAX_HP, EMOTES, WEAPONS,
   GRAB_RANGE, THROW_SPEED, TAG_RANGE, EMOTE_LIST, round2, gameMinutes,
-  GAS_COOLDOWN_MS, GAS_RANGE, inSafeZone, TRUCK_SPAWN, isCurfew, ROLES, badgeText, OPINION,
+  GAS_COOLDOWN_MS, GAS_RANGE, inSafeZone, inPlaza, TRUCK_SPAWN, isCurfew, ROLES, badgeText, OPINION,
 } from '../shared/constants.js';
 import { objectiveAt, phaseAt, newsAt, eventAt, currentScenario, scenarioLabel } from '../shared/timeline.js';
 import { recordVisit, recordSummary, loadProfile, updateProfile, badgeOf } from './profile.js';
 import { createTutorial } from './ui/tutorial.js';
+import { createProgress } from './ui/progress.js';
 import { createWeather } from './scene/weather.js';
 import { createRiotScene } from './scene/riot.js';
 import { buildBases } from './scene/bases.js';
@@ -104,6 +105,9 @@ async function start() {
   let local = null;          // LocalPlayer, created when you press Play
   let pendingExit = false;   // we left the truck; ignore old "you own it" messages
   let tutorial = null;       // first-minute guide (see ui/tutorial.js)
+  let progress = null;       // daily missions, XP and badges (see ui/progress.js)
+  let spectating = false;    // "Just watch": no body, free camera
+  let watchId = null;        // the player the spectator camera follows (null = orbit the square)
   let status = 'menu';
   let score = { g: 0, c: 0 };
   let opinion = 50;          // public opinion, 0..100 (100 = with the protesters)
@@ -189,7 +193,7 @@ async function start() {
 
   let joinedBefore = false;
   net.onWelcome = () => {
-    if (joinedBefore) {
+    if (joinedBefore && local) {
       // RECONNECT: the server freed the truck and reset our health; match that.
       if (local.inVehicle) exitTruck(false);
       truck.ownerId = 0;
@@ -339,6 +343,7 @@ async function start() {
     const pos = mine ? local.position : actor.mesh.position;
     const v = mine ? 1 : volumeAt(pos);
     if (mine) abilityReadyAt = performance.now() + (ok || k !== 'm' ? ROLES[k].cooldown : 800);
+    if (mine && ok) progress?.event({ m: 'treat', j: 'photo', d: 'drum' }[k]);
     if (k === 'm') {
       if (!ok) { if (mine) { abilityHint = 'Nobody close to you needs treatment'; abilityHintUntil = performance.now() + 2000; sfx.noItem(); } return; }
       if (to === net.myId) local?.reviveInPlace(hp);
@@ -370,6 +375,7 @@ async function start() {
     else land();
   };
   net.onNews = (text) => riotUi.news(text);
+  net.onBoard = (list) => progress?.setBoard(list);
   net.onCrowd = ({ i, k }) => {
     riot.knockDown(i, k[0], k[1]);
     const a = i >= 1000 ? riot.police[i - 1000] : riot.crowd[i];
@@ -393,6 +399,7 @@ async function start() {
     cam.unlock();
     input.enabled = false;
     const p = recordSummary(msg, local.faction);
+    if (msg.winner === local.faction) progress?.event('win');
     const mine = (msg.top ?? []).find((r) => r.n === local.name);
     const note = `${msg.winner === local.faction ? 'Your side won this day. ' : ''}`
       + `${mine ? `You scored ${mine.total} points. ` : ''}`
@@ -450,6 +457,7 @@ async function start() {
       target.fx.flash();
       target.setHp(hp);
       if (by === net.myId) cam.shake(hp <= 0 ? 0.18 : 0.08); // landing a hit feels good too
+      if (by === net.myId && hp <= 0) progress?.event('ko'); // violence resets the peaceful-play mission
     }
     showBonk(scene, pos, byTruck ? text : hp <= 0 ? text : attackerFaction === 'c' ? 'SQUEAK!' : 'CRUNCH!');
     const v = id === net.myId ? 1 : volumeAt(pos);
@@ -463,7 +471,7 @@ async function start() {
     const pos = id === net.myId ? local.position : target.mesh.position;
     showBonk(scene, pos, 'BLOCK!');
     sfx.clang(id === net.myId ? 1 : volumeAt(pos));
-    if (id === net.myId) cam.shake(0.1);
+    if (id === net.myId) { cam.shake(0.1); progress?.event('block'); }
   };
 
   let lastSplash = 0;
@@ -490,7 +498,7 @@ async function start() {
 
   // ------------------------------------------------------ emotes, tags, bottom bar
   net.onEmote = ({ id, e }) => { if (id !== net.myId) remotes.get(id)?.fx.playEmote(e); };
-  net.onTag = (tag) => { tagLayer.add(tag); sfx.splash(0.4); };
+  net.onTag = (tag) => { tagLayer.add(tag); sfx.splash(0.4); if (local && tag.n === local.name) progress?.event('tag'); };
   net.onTags = (list) => tagLayer.setAll(list);
   net.onTagsLeft = (n) => bar.setTagsLeft(n);
 
@@ -538,8 +546,40 @@ async function start() {
   const loading = document.getElementById('loading');
   if (loading) { loading.classList.add('done'); setTimeout(() => loading.remove(), 600); }
 
-  showStartMenu(({ name, faction, slogan, look, role }) => {
+  // ---- just watching: the world, the news and the chat, but no body and no score
+  let spectatorBar = null;
+  const watchable = () => [...remotes.entries()].filter(([, r]) => !r.isNpc);
+  function spectatorKeys() {
+    const list = watchable().map(([id]) => id);
+    const at = list.indexOf(watchId);
+    if (input.pressed('Space') || input.pressed('ArrowRight') || input.pressed('KeyN')) watchId = list.length ? list[(at + 1) % list.length] : null;
+    if (input.pressed('ArrowLeft') || input.pressed('KeyB')) watchId = list.length ? list[(at - 1 + list.length) % list.length] : null;
+    if (input.pressed('KeyF')) watchId = null;
+    if (input.pressed('KeyM')) sfx.toggleMute();
+  }
+  function updateSpectatorBar() {
+    if (!spectatorBar) {
+      spectatorBar = document.createElement('div');
+      spectatorBar.className = 'spectator-bar';
+      spectatorBar.innerHTML = '<span class="who"></span><span class="keys">Space / → next player · ← previous · F: free view · M: mute</span><button type="button">Join the protest</button>';
+      spectatorBar.querySelector('button').onclick = () => location.reload();
+      document.body.appendChild(spectatorBar);
+    }
+    const r = watchId ? remotes.get(watchId) : null;
+    const humans = watchable().length;
+    spectatorBar.querySelector('.who').textContent = r
+      ? `Watching ${r.name} (${FACTIONS[r.faction]?.label ?? ''})`
+      : `Watching the square · ${humans} player${humans === 1 ? '' : 's'} online`;
+  }
+
+  showStartMenu(({ name, faction, slogan, look, role, spectate }) => {
     sfx.unlock(); // browsers only allow sound after a click
+    if (spectate) {
+      spectating = true;
+      net.spectate = true;
+      net.connect('', 'g');
+      return;
+    }
     const profile = recordVisit(); // counts today, extends your streak
     net.role = role || '';
     net.badge = badgeOf(profile);
@@ -559,8 +599,9 @@ async function start() {
     // First visit (or ?tutorial=1): the short guide.
     if (!profile.tutorialDone || new URLSearchParams(location.search).get('tutorial')) {
       tutorial = createTutorial({ isTouch, role: net.role, faction });
-      tutorial.begin(local.position, () => { updateProfile({ tutorialDone: true }); tutorial = null; });
+      tutorial.begin(local.position, () => { updateProfile({ tutorialDone: true }); tutorial = null; progress?.event('tutorial'); });
     }
+    progress = createProgress({ faction, role: net.role });
     net.connect(name, faction);
     // Capture the mouse: from now on, moving it turns the camera (Esc to release).
     if (!isTouch) {
@@ -632,6 +673,7 @@ async function start() {
     const driving = local?.inVehicle;
 
     if (local) handleKeys(driving);
+    else if (spectating) spectatorKeys();
 
     // KO over? Stand up at your spawn point and tell the server.
     if (local?.koUntil && now >= local.koUntil) {
@@ -652,7 +694,7 @@ async function start() {
         if (local.blocking) tutorial?.notify('block');
       }
       local?.update(dt, input, cam.yaw, props);
-      if (local?.justDashed) { local.justDashed = false; sfx.whoosh(0.7); cam.shake(0.06); }
+      if (local?.justDashed) { local.justDashed = false; sfx.whoosh(0.7); cam.shake(0.06); progress?.event('dash'); }
       truck.followNetwork(now);
     }
 
@@ -685,10 +727,13 @@ async function start() {
     } else if (local) {
       cam.update(dt, local.position, 0.8);
     } else {
-      // In the menu: slowly circle the monument from far away.
-      cam.distance = 45;
-      cam.yaw += dt * 0.1;
-      cam.update(dt, tmp.set(0, 4, 0), 0);
+      // In the menu (or when just watching): slowly circle the monument, or follow one player.
+      const followed = spectating && watchId ? remotes.get(watchId) : null;
+      if (spectating && watchId && !followed) watchId = null; // they left
+      cam.yaw += dt * (followed ? 0.08 : 0.1);
+      if (followed) { cam.distance = 12; cam.update(dt, followed.mesh.position, 1); }
+      else { cam.distance = 45; cam.update(dt, tmp.set(0, 4, 0), 0); }
+      if (spectating) updateSpectatorBar();
     }
     lighting.follow(cam.target);
     updateLabels();
@@ -727,6 +772,7 @@ async function start() {
     if (input.pressed('KeyH') && !driving) throwGas();
     if (input.pressed('KeyR')) useAbility();
     if (input.pressed('KeyK')) tutorial?.skip();
+    if (input.pressed('KeyP')) progress?.toggle();
     // 1-4 = chants / emotes
     ['Digit1', 'Digit2', 'Digit3', 'Digit4'].forEach((code, i) => {
       if (input.pressed(code)) { net.send({ t: MSG.CHAT, m: EMOTES[local.faction][i] }); if (i === 0) tutorial?.notify('chant'); }
@@ -832,6 +878,10 @@ async function start() {
     const evDist = ev ? Math.hypot(local.position.x - ev.zone.x, local.position.z - ev.zone.z) : 0;
     riotUi.setObjective(obj, local.faction, dist, phaseAt(minutes).title, riot.lineState, ev, evDist);
     if (tutorial) tutorial.update(local.position, obj ? obj.zone : null);
+    if (progress && !local.isKO) {
+      const inZone = !!obj && (obj.zone.plaza ? inPlaza(local.position.x, local.position.z) : dist <= obj.zone.r);
+      progress.tick(dt, { inZone, inEvent: !!ev && evDist <= ev.zone.r });
+    }
 
     // Tear gas: slows you, hazes the screen, makes you cough. Masks help (outfit editor!).
     const exposure = local.inVehicle ? 0 : riot.gasAt(local.position.x, local.position.z) * (1 - gasProtection(local.look));
@@ -857,7 +907,7 @@ async function start() {
   }
 
   // Handy for debugging in the browser console: type `game` and press Enter.
-  window.game = { riot, riotUi, scene, physics, truck, remotes, props, net, cam, renderer, get local() { return local; }, get score() { return score; }, get tutorial() { return tutorial; }, get adapt() { return { ratio, ratioCeiling, frameCount, frameTime }; } };
+  window.game = { riot, riotUi, scene, physics, truck, remotes, props, net, cam, renderer, get local() { return local; }, get score() { return score; }, get tutorial() { return tutorial; }, get progress() { return progress; }, get adapt() { return { ratio, ratioCeiling, frameCount, frameTime }; } };
 }
 
 start();

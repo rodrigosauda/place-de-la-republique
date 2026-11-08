@@ -198,6 +198,13 @@ export const OBJECTIVES = [
 // A scenario can rename an event with `scn.events = { id: { title, news, g, c } }`.
 export const EVENTS = [
   {
+    id: 'students', from: 9.5, to: 10.5, kind: 'rally', zone: { x: 70, z: -15, r: 13 },
+    title: 'Students arrive with banners',
+    g: 'Welcome the students arriving from the east: gather round them and the march gains support',
+    c: 'Let the students through peacefully',
+    news: 'Hundreds of students arrive at the square with banners and a sound system.',
+  },
+  {
     id: 'speech', from: 11.5, to: 12.5, kind: 'rally', zone: { x: 0, z: 0, r: 16 },
     title: 'Open-air speech at the monument',
     g: 'Gather around the monument and hear the speaker: the crowd wins support',
@@ -210,6 +217,13 @@ export const EVENTS = [
     g: 'Follow the brass band west and dance: the march gains support',
     c: 'Keep the boulevard open for the brass band',
     news: 'A brass band leads the crowd along Boulevard de Magenta.',
+  },
+  {
+    id: 'vigil', from: 20, to: 21, kind: 'rally', zone: { x: 0, z: 0, r: 18 },
+    title: 'Candlelight vigil at the monument',
+    g: 'Gather quietly at the monument for the candlelight vigil: peace wins hearts',
+    c: 'Keep your distance: the vigil is peaceful',
+    news: 'People light candles around the monument for a silent vigil.',
   },
   {
     id: 'cameras', from: 17.5, to: 18.5, kind: 'cameras', zone: { x: 118, z: 18, r: 18 },

@@ -73,6 +73,9 @@ export class GameRoom extends DurableObject {
     //   th = time of the last truck hit
     this.players = new Map();
     this.sockets = new Map();     // id -> WebSocket
+    this.spectators = new Map();  // id -> WebSocket: people just watching (no body, no score, not counted as players)
+    this.boardSig = '';           // last leaderboard sent (only re-sent when it changes)
+    this.lastBoardAt = 0;
     this.rate = new Map();        // id -> { second, count } for the message rate limit
 
     // NPCs: id ("n0", "n1"...) -> same fields as a player + npc: true, tx/tz (walk target), kx/kz (knockback)
@@ -115,7 +118,9 @@ export class GameRoom extends DurableObject {
     // Rebuild players after waking up from hibernation.
     for (const ws of this.ctx.getWebSockets()) {
       const p = ws.deserializeAttachment();
-      if (p && p.id) {
+      if (p && p.id && p.sp) {
+        this.spectators.set(p.id, ws);
+      } else if (p && p.id) {
         this.players.set(p.id, p);
         this.sockets.set(p.id, ws);
       }
@@ -152,6 +157,12 @@ export class GameRoom extends DurableObject {
       } catch (e) {
         return new Response(`last-day error: ${e && e.stack ? e.stack : e}`, { status: 500 });
       }
+    }
+    if (new URL(request.url).pathname === '/online') {
+      // Who is on the square right now (public, tiny): shown in the start menu.
+      let g = 0, c = 0;
+      for (const p of this.players.values()) { if (p.f === 'g') g++; else if (p.f === 'c') c++; }
+      return Response.json({ g, c, watching: this.spectators.size, total: this.players.size }, { headers: { 'cache-control': 'public, max-age=5' } });
     }
     if (new URL(request.url).pathname === '/stats') {
       // Simple player statistics (last 14 game days): joins, unique players, peak online.
@@ -230,6 +241,7 @@ export class GameRoom extends DurableObject {
   // ------------------------------------------------------------------------
   handleJoin(ws, me, msg) {
     if (me && me.id) return; // already joined
+    if (msg.sp === 1) return this.handleSpectate(ws);
 
     const name = sanitize(msg.n, MAX_NAME_LENGTH) || 'Anonymous';
     const faction = FACTIONS[msg.f] ? msg.f : DEFAULT_FACTION;
@@ -266,6 +278,22 @@ export class GameRoom extends DurableObject {
     this.send(ws, { t: MSG.TAGS_LEFT, n: this.tagsLeft(player) });
     this.rebuildNpcs();
     this.broadcastRoster();
+    this.markDirty();
+  }
+
+  // "Just watch": you get the world (roster, snapshots, chat, news) but no body and no score.
+  handleSpectate(ws) {
+    const id = this.newId();
+    this.spectators.set(id, ws);
+    ws.serializeAttachment({ id, sp: 1 });
+    this.send(ws, { t: MSG.WELCOME, id });
+    this.send(ws, { t: MSG.VEHICLE, o: this.truck.o });
+    this.send(ws, { t: MSG.PROPS, l: this.props.map((pr, i) => [pr[0], pr[1], this.carried.get(i) || 0]) });
+    this.updateOpinion(Date.now());
+    this.send(ws, this.scoreMessage());
+    this.send(ws, { t: MSG.TAGS, l: this.tags });
+    this.send(ws, this.roster());
+    this.send(ws, this.boardMessage());
     this.markDirty();
   }
 
@@ -608,6 +636,7 @@ export class GameRoom extends DurableObject {
     this.updateCurfew(now);
     this.updateEvent(now);
     this.updateOpinion(now);
+    this.updateBoard(now);
 
     if (this.saveDue && now - this.lastSave > 5000) {
       // Save props + score at most every 5 s (storage writes count towards the free quota).
@@ -639,7 +668,7 @@ export class GameRoom extends DurableObject {
     }
     // Nothing happened for ~3 seconds: stop the timer so the object can hibernate.
     // (Not while people are online with NPCs walking, or during the curfew.)
-    if (this.players.size && (this.npcs.size || isCurfew(gameMinutes(now)))) return;
+    if (this.watchers() && (this.npcs.size || isCurfew(gameMinutes(now)))) return;
     if (++this.idleTicks > TICK_RATE * 3) {
       clearInterval(this.ticker);
       this.ticker = null;
@@ -728,7 +757,7 @@ export class GameRoom extends DurableObject {
 
   // NPCs wander around the plaza, sometimes stop, sometimes chant.
   updateNpcs(now) {
-    if (!this.npcs.size || !this.players.size) return;
+    if (!this.npcs.size || !this.watchers()) return;
     const dt = TICK_MS / 1000;
     for (const n of this.npcs.values()) {
       if (n.hp <= 0) {
@@ -787,7 +816,7 @@ export class GameRoom extends DurableObject {
   // NPCs fight: police NPCs go after protesters nearby (and the other way round),
   // and hit whoever is within reach. Same rules as players (blocking works, bases are safe).
   updateNpcFights(now) {
-    if (!this.npcs.size || !this.players.size) return;
+    if (!this.npcs.size || !this.watchers()) return;
     const tense = true; // constant chaos: NPCs always look for a fight
     const everyone = this.targets();
     for (const n of this.npcs.values()) {
@@ -980,7 +1009,7 @@ export class GameRoom extends DurableObject {
   // 06:00: send everyone a summary of the day that just ended, then reset.
   endOfDay(newDay) {
     const people = Object.values(this.day.people);
-    const total = (p) => p.ko * 3 + p.zp + p.tg * 2 + (p.hl || 0) * 2 + (p.ph || 0);
+    const total = (p) => this.dayTotal(p);
     const top = people.sort((a, b) => total(b) - total(a)).slice(0, 5).map((p) => ({ ...p, total: total(p) }));
     const pick = (fn) => people.reduce((best, p) => (!best || fn(p) > fn(best) ? p : best), null);
     const brawler = pick((p) => p.ko), tagger = pick((p) => p.tg), healer = pick((p) => p.hl || 0), reporter = pick((p) => p.ph || 0);
@@ -998,7 +1027,7 @@ export class GameRoom extends DurableObject {
         ].filter(Boolean),
       });
     }
-    this.last = { g: this.score.g, c: this.score.c, o: Math.round(this.opinion()), scn: scenarioLabel(scn), winner, day: this.score.day, players: people.length };
+    this.last = { g: this.score.g, c: this.score.c, o: Math.round(this.opinion()), scn: scenarioLabel(scn), winner, day: this.score.day, players: people.length, top: top.slice(0, 3).map((p) => [p.n, p.f, p.total]) };
     this.ctx.storage.put('last', this.last);
     this.score = { g: 0, c: 0, day: newDay, o: OPINION.start };
     this.opinionAt = Date.now();
@@ -1174,6 +1203,7 @@ export class GameRoom extends DurableObject {
 
   removePlayer(ws) {
     const me = ws.deserializeAttachment();
+    if (me && me.sp) { this.spectators.delete(me.id); return; }
     if (!me || !this.players.has(me.id)) return;
     this.dropCarried(me.id);
     const left = this.players.get(me.id);
@@ -1206,12 +1236,41 @@ export class GameRoom extends DurableObject {
     return id;
   }
 
-  broadcastRoster() {
+  roster() {
     const l = [
       ...[...this.players.values()].map((p) => [p.id, p.n, p.f, p.s, 0, p.l, p.ro || '', p.bd || 0]),
       ...[...this.npcs.values()].map((n) => [n.id, n.n, n.f, n.s, 1, n.l]),
     ];
-    this.broadcast({ t: MSG.ROSTER, l });
+    return { t: MSG.ROSTER, l };
+  }
+
+  broadcastRoster() {
+    this.broadcast(this.roster());
+  }
+
+  // Points of one person today (same formula as the end-of-day summary).
+  dayTotal(p) {
+    return p.ko * 3 + p.zp + p.tg * 2 + (p.hl || 0) * 2 + (p.ph || 0);
+  }
+
+  // Today's top 5 (live leaderboard). Re-sent only when it changes.
+  boardMessage() {
+    const l = Object.values(this.day.people)
+      .map((p) => [p.n, p.f, this.dayTotal(p)])
+      .filter((r) => r[2] > 0)
+      .sort((a, b) => b[2] - a[2])
+      .slice(0, 5);
+    return { t: MSG.BOARD, l };
+  }
+
+  updateBoard(now) {
+    if (now - this.lastBoardAt < 5000) return;
+    this.lastBoardAt = now;
+    const m = this.boardMessage();
+    const sig = JSON.stringify(m.l);
+    if (sig === this.boardSig) return;
+    this.boardSig = sig;
+    this.broadcast(m);
   }
 
   addScore(faction, points) {
@@ -1364,6 +1423,11 @@ export class GameRoom extends DurableObject {
     this.shiftOpinion(gain, 'e');
   }
 
+  // People who can see the world: players + spectators (keeps NPCs walking for someone who only watches).
+  watchers() {
+    return this.players.size + this.spectators.size;
+  }
+
   // Something changed -> make sure the ticker is running.
   markDirty() {
     this.dirty = true;
@@ -1374,6 +1438,9 @@ export class GameRoom extends DurableObject {
   broadcast(obj) {
     const data = JSON.stringify(obj);
     for (const ws of this.sockets.values()) {
+      try { ws.send(data); } catch { /* socket closing; cleanup happens in webSocketClose */ }
+    }
+    for (const ws of this.spectators.values()) {
       try { ws.send(data); } catch { /* socket closing; cleanup happens in webSocketClose */ }
     }
   }

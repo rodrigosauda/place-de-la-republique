@@ -95,6 +95,7 @@ To test the production build locally first: `npm run preview` then open http://l
 | Pick up / throw a bin or barrier; protesters: throw a fresh tear-gas canister back | G (click also throws) | Grab / Throw |
 | Tear gas (police) | H | Tear gas (police only) |
 | Role ability (medic / journalist / drummer) | R | Role |
+| Missions, level and badges | P | tap the missions box |
 | Skip the first-steps guide | K | tap the panel |
 | Truck in / out | E | Truck |
 | Water cannon (in truck) | hold click or Space | Block / Spray |
@@ -242,6 +243,23 @@ last finished day ended (`/last`, public and tiny) and your streak, and the end-
 lowers its resolution by itself if the frame rate stays under about 30 fps (and raises it again when there is room).
 Rain wets the ground and softens the shadows. Audio is still synthesized (no sound files): crowd murmur, rhythmic chanting,
 distant sirens, helicopter, rain with drips, drum phrases, camera shutter.
+
+## Social layer: online counts, missions, badges, spectating
+
+- **Who is online** (`/online`, public and tiny): the start menu shows how many protesters, police and spectators are on the
+  square and which side needs players. It refreshes every 10 s while the menu is open.
+- **Just watch**: a spectator joins with `{ t: 'j', sp: 1 }`. They get the roster, snapshots, chat, news and score, but no
+  body, no score and no way to act (the server ignores everything else they send). Space / arrows follow a player, F is the
+  free view, "Join the protest" reloads into the menu. Spectators keep the NPCs walking but do not count as players.
+- **Daily missions, level and badges** (`client/ui/progress.js`, localStorage only): three missions per real day, picked by
+  date, side and role (a medic gets a treat-people mission, police never get graffiti). +40 XP per mission, +100 per badge,
+  +60 for a won day, plus a little for time played; level n starts at 60 x (n-1)^2 XP. Violence resets the "peaceful
+  play" mission. Nothing here is sent to the server, so it is cosmetic. Press P (or tap the box) for the full panel.
+- **Live leaderboard**: today's top 5 (knock-outs, route points, tags, treatments, photos) is broadcast at most every 5 s
+  when it changes (`MSG.BOARD`), shown in the P panel; `/last` also carries the last day's top 3 for the start menu.
+- **Two more events**: *students arrive with banners* (09:30, east of the square) and *candlelight vigil* (20:00, at the
+  monument), both peaceful rally events.
+- Slogan quick-picks under the placard field (the profanity filter in `shared/filter.js` still applies on the server).
 
 ## How the networking works (short version)
 

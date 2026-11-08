@@ -40,6 +40,12 @@ export default {
       return env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room)).fetch(request);
     }
 
+    // Who is on the square right now (public, tiny): shown in the start menu.
+    if (url.pathname === '/online') {
+      const room = (url.searchParams.get('room') || 'main').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32) || 'main';
+      return env.GAME_ROOM.get(env.GAME_ROOM.idFromName(room)).fetch(request);
+    }
+
     // How the last finished game day ended (public, tiny): shown in the start menu.
     if (url.pathname === '/last') {
       const room = (url.searchParams.get('room') || 'main').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32) || 'main';

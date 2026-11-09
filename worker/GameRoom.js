@@ -1048,6 +1048,8 @@ export class GameRoom extends DurableObject {
     this.score = { g: 0, c: 0, day: newDay, o: OPINION.start };
     this.opinionAt = Date.now();
     this.day = { day: newDay, people: {}, flags: {}, evb: {} };
+    this.boardSig = ''; // new day: the big screen's top 3 starts empty right away
+    this.broadcast(this.boardMessage());
     this.resetWorld();
     this.broadcast(this.scoreMessage());
     this.saveDue = true;
@@ -1276,14 +1278,20 @@ export class GameRoom extends DurableObject {
       .filter((r) => r[2] > 0)
       .sort((a, b) => b[2] - a[2])
       .slice(0, 5);
-    return { t: MSG.BOARD, l };
+    // Big screen: today's 3 players with the most knock-outs on each side (reset at 06:00 with the day).
+    const top3 = (f) => Object.values(this.day.people)
+      .filter((p) => p.f === f && p.ko > 0)
+      .sort((a, b) => b.ko - a.ko)
+      .slice(0, 3)
+      .map((p) => [p.n, p.ko]);
+    return { t: MSG.BOARD, l, k: { g: top3('g'), c: top3('c') } };
   }
 
   updateBoard(now) {
     if (now - this.lastBoardAt < 5000) return;
     this.lastBoardAt = now;
     const m = this.boardMessage();
-    const sig = JSON.stringify(m.l);
+    const sig = JSON.stringify([m.l, m.k]);
     if (sig === this.boardSig) return;
     this.boardSig = sig;
     this.broadcast(m);

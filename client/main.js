@@ -379,7 +379,7 @@ async function start() {
     else land();
   };
   net.onNews = (text) => riotUi.news(text);
-  net.onBoard = (list) => progress?.setBoard(list);
+  net.onBoard = (list, kos) => { progress?.setBoard(list); bigScreen.setTopKos(kos); };
   net.onCrowd = ({ i, k }) => {
     riot.knockDown(i, k[0], k[1]);
     const a = i >= 1000 ? riot.police[i - 1000] : riot.crowd[i];

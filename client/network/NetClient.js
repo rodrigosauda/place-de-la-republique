@@ -103,7 +103,7 @@ export class NetClient {
         case MSG.RESET: this.onReset(); break;
         case MSG.CROWD_OUT: this.onCrowd(msg); break;
         case MSG.ABILITY_OUT: this.onAbility(msg); break;
-        case MSG.BOARD: this.onBoard(msg.l); break;
+        case MSG.BOARD: this.onBoard(msg.l, msg.k); break;
       }
     });
 

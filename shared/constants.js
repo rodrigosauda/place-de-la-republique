@@ -65,7 +65,7 @@ export const MSG = {
   CROWD_OUT: 'I',   // { t, i, k: [kx, kz], by }         a background extra was knocked down
   SUMMARY: 'U',     // { t, ... }                        end-of-day summary (at 06:00)
   ABILITY_OUT: 'Q', // { t, id, k: role, ok: 0|1, to?: id, hp? }  someone used a role ability (ok 0 = nothing to do)
-  BOARD: 'D',       // { t, l: [[name, faction, points], ...] }  today's top 5 (live leaderboard)
+  BOARD: 'D',       // { t, l: [[name, faction, points], ...], k: { g: [[name, kos]x3], c: [...] } }  today's top 5 + top 3 K.O. per side
   ERROR: 'E',       // { t, m: message }
 };
 

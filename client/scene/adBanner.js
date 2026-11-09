@@ -16,9 +16,10 @@ const W = 16, H = 9;                                // metres
 // On the long south facade (Café République block), facing the square. Chosen by a line-of-sight check
 // against the real tree positions: from about 70% of the square you can see it, while the old spot at
 // x = -51 was hidden behind the plane trees from everywhere. Keep it low on the wall (its top stays under
-// the cornice at about 20 m) and keep the centre near x = 20.
+// the cornice at about 20 m). The big screen (bigScreen.js) is on the same wall to the RIGHT (x 26-41),
+// so the banner sits on the left part (x 4.5-20.5) and the two never overlap.
 const WALL_OFFSET = 0.8;                               // metres in front of the wall (brackets bridge the gap)
-const POSITION = new THREE.Vector3(19.7, 10.5, 57.9 - WALL_OFFSET);
+const POSITION = new THREE.Vector3(12.5, 10.5, 57.9 + (12.5 - 19.7) * -0.0475 - WALL_OFFSET);
 const FACING = new THREE.Vector3(-0.0475, 0, -1).normalize(); // the banner faces the square (north)
 const ROTATE_MS = 30000;
 const SEEN_AFTER_S = 2;                             // on screen for 2 s = 1 impression

@@ -21,7 +21,7 @@ export function createTagLayer(scene) {
     // shrink to fit
     let size = 64;
     while (g.measureText(text).width > 470 && size > 24) { size -= 4; g.font = g.font.replace(/\d+px/, `${size}px`); }
-    const fill = faction === 'c' ? '#3b6dff' : '#f7d417';
+    const fill = faction === 'c' ? '#3b6dff' : '#e0303c';
     g.lineJoin = 'round';
     g.lineWidth = 14;
     g.strokeStyle = '#111';

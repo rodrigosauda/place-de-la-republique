@@ -14,11 +14,11 @@ export const SLOT_TITLES = {
 
 // Bundles are cheaper than buying the parts. `grants` are item keys.
 export const BUNDLES = [
-  { id: 'bundle:founder', label: 'Founder pack', desc: 'Gold name, gold dust trail, gold placard, tricolour cape', price: 499,
+  { id: 'bundle:founder', label: 'Founder pack', desc: 'Gold name, gold dust trail, gold placard, tricolour cape', price: 350,
     grants: ['flair:founder', 'trail:gold', 'placard:gold', 'back:cape'] },
-  { id: 'bundle:tricolor', label: 'Blue-white-red pack', desc: 'Tricolour beanie, cape, sparks trail and name', price: 499,
+  { id: 'bundle:tricolor', label: 'Blue-white-red pack', desc: 'Tricolour beanie, cape, sparks trail and name', price: 300,
     grants: ['hat:tricolor', 'back:cape', 'trail:tricolor', 'flair:tricolor'] },
-  { id: 'bundle:party', label: 'Party pack', desc: 'Clown nose, confetti, feathers, star name', price: 299,
+  { id: 'bundle:party', label: 'Party pack', desc: 'Clown nose, confetti, feathers, star name', price: 250,
     grants: ['face:clown', 'trail:confetti', 'trail:feathers', 'flair:star'] },
 ];
 

@@ -73,7 +73,7 @@ export const MSG = {
 // Factions (one-letter codes on the wire)
 // ---------------------------------------------------------------------------
 export const FACTIONS = {
-  g: { label: 'Yellow Vest', plural: 'Yellow Vests', color: 0xf7d417 }, // protester, yellow
+  g: { label: 'Protester', plural: 'Protesters', color: 0xe0303c }, // protesters: dressed in black, red is the team colour
   c: { label: 'Riot Police', plural: 'Riot Police', color: 0x1d2b4f },                    // riot police, dark blue
 };
 export const DEFAULT_FACTION = 'g';
@@ -136,7 +136,7 @@ export const FRIENDLY_FIRE = false;     // true = you can also hit your own fact
 // Weapons: ONE funny weapon per side for now (no switching).
 // range in metres, cooldown in ms, knock = push speed. Both are balanced the same.
 export const WEAPONS = [
-  { id: 'baguette', label: 'Baguette', range: 2.4, cooldown: 600, knock: 9 },          // Yellow Vests
+  { id: 'baguette', label: 'Baguette', range: 2.4, cooldown: 600, knock: 9 },          // Protesters
   { id: 'chicken', label: 'Rubber chicken', range: 2.4, cooldown: 600, knock: 9 },     // Riot Police (it squeaks)
 ];
 export const FIGHT_WEAPONS = WEAPONS.length;

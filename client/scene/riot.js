@@ -28,6 +28,8 @@ const TOP_COLORS = [0x22304f, 0x1d1d1f, 0xecebe6, 0x7c8088, 0xb3262e, 0x3c6e47, 
 const PANTS_COLORS = [0x3d5a80, 0x1f1f22, 0xb9a57f, 0x5f636b, 0x2f3b52];
 const SKIN = [0xf1d0b5, 0xe0b394, 0xc68e6a, 0xa26a45, 0x7a4b2e, 0x4e3020];
 const HAIR = [0x1c1714, 0x4a2f1d, 0x8a5a2b, 0xd9b26a, 0xa9a9a9, 0xb5401f];
+// The black bloc: black and grey clothes, hoods up (drawn as dark "hair").
+const BLOC_COLORS = [0x1d1d1f, 0x1d1d1f, 0x2b2c30, 0x3a3c42, 0x55585e];
 const SIGN_COLORS = [0xc9a46b, 0xf4f1ea, 0xd6202d, 0xf7d417];
 
 // A tiny repeatable random generator (same numbers in every browser).
@@ -194,30 +196,31 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
       phase: r() * 6.28, speed: 1.15 + r() * 0.45,
       stride: 0, moving: 0,
       height: 0.92 + r() * 0.16, wide: 0.9 + r() * 0.25,
-      vest: r() < 0.72, sign: r() < 0.32, flare: r() < 0.05, flagger: false,
+      vest: r() < 0.12, bloc: i < FIGHTERS || r() < 0.45, sign: r() < 0.32, flare: r() < 0.05, flagger: false,
       visible: false, koUntil: 0, kx: 0, kz: 0, punchT: -1,
     };
     crowd.push(a);
     if (i >= FIGHTERS && !lowQuality && seeded(i * 104729 + 7)() < 0.1 && !BANNER_PAIRS.some((p) => p.includes(i))) { a.sign = true; a.flagger = true; } // 1 in 10 carries a flag
     if (BANNER_PAIRS.some((p) => p.includes(i))) a.sign = false;
     C.flag.setColorAt(i, color.set(FLAG_COLORS[i % FLAG_COLORS.length]));
-    const top = TOP_COLORS[Math.floor(r() * TOP_COLORS.length)];
+    const top = a.bloc ? BLOC_COLORS[Math.floor(r() * BLOC_COLORS.length)] : TOP_COLORS[Math.floor(r() * TOP_COLORS.length)];
     const skin = SKIN[Math.floor(r() * SKIN.length)];
-    const pants = PANTS_COLORS[Math.floor(r() * PANTS_COLORS.length)];
+    const pants = a.bloc ? BLOC_COLORS[Math.floor(r() * 3)] : PANTS_COLORS[Math.floor(r() * PANTS_COLORS.length)];
+    if (a.bloc) a.vest = false;
     C.torso.setColorAt(i, color.set(top));
     C.armL.setColorAt(i, color.set(top));
     C.armR.setColorAt(i, color.set(top));
     C.head.setColorAt(i, color.set(skin));
-    C.hair.setColorAt(i, color.set(r() < 0.25 ? TOP_COLORS[Math.floor(r() * 3)] : HAIR[Math.floor(r() * HAIR.length)])); // some wear beanies
+    C.hair.setColorAt(i, color.set(a.bloc ? top : r() < 0.25 ? TOP_COLORS[Math.floor(r() * 3)] : HAIR[Math.floor(r() * HAIR.length)])); // hood up / some wear beanies
     C.legL.setColorAt(i, color.set(pants));
     C.legR.setColorAt(i, color.set(pants));
     C.sign.setColorAt(i, color.set(SIGN_COLORS[Math.floor(r() * SIGN_COLORS.length)]));
   }
 
   // ------------------------------------------------------- riot police
-  const navy = mat(0x182238);
+  const navy = mat(0x15181f);
   const P = {
-    torso: inst(G.torso, mat(0x0f1522), N_POLICE),
+    torso: inst(G.torso, mat(0x0d0f14), N_POLICE),
     head: inst(G.head, mat(0xe0b394), N_POLICE),
     helmet: inst(G.helmet, mat(0x1b2333, { metalness: 0.4, roughness: 0.35 }), N_POLICE),
     visor: inst(G.visor, new THREE.MeshStandardMaterial({ color: 0x9fc6e8, transparent: true, opacity: 0.55, roughness: 0.1 }), N_POLICE),
@@ -628,7 +631,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
           if (t >= 1) a.punchT = -1;
         }
         place(C.armR, i, -0.27, 1.38, 0, armR, 0, -0.08);
-        if ((!a.sign || tg.fight) && a.vest) place(C.bread, i, -0.27, 1.38, 0, armR, 0, -0.08); // swinging a baguette
+        if ((!a.sign || tg.fight) && (a.vest || a.bloc)) place(C.bread, i, -0.27, 1.38, 0, armR, 0, -0.08); // swinging a baguette
         else C.bread.setMatrixAt(i, HIDDEN);
         if (raise) {
           // Left arm up holding the stick and the sign above the head (or a flag on a taller pole).

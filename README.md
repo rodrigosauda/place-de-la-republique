@@ -1,6 +1,6 @@
 # Place de la République — low-poly multiplayer pilot
 
-A lighthearted browser game: pick **Yellow Vests** or **Riot Police** and play on the REAL
+A lighthearted browser game: pick **Protesters** (dressed in black, red armbands; the yellow vest is an outfit option) or **Riot Police** and play on the REAL
 Place de la République in Paris (every building, street, tree and lamp from OpenStreetMap).
 Everything runs on **one Cloudflare Worker** (free plan): static client + a `GameRoom` Durable Object.
 
@@ -61,7 +61,7 @@ Vite forwards `/ws` to wrangler, so just open **http://localhost:5173**.
 
 ## 3. Test multiplayer with two tabs
 
-1. Open http://localhost:5173 in one tab → name "A", Yellow Vest → Play.
+1. Open http://localhost:5173 in one tab → name "A", Protester → Play.
 2. Open a second tab (or a private window) → name "B", Riot Police → Play.
 3. Put the tabs side by side. Move in one, and you'll see the other move.
 4. Walk to the white truck near the monument, press **E** to drive. In the other
@@ -107,7 +107,7 @@ Slow computer? Add `?quality=low` to the link (no shadows, fewer details).
 
 ## Features
 
-- Yellow Vests vs Riot Police. One weapon each: a baguette (protesters) and a rubber chicken (police, it squeaks).
+- Protesters vs Riot Police. One weapon each: a baguette (protesters) and a rubber chicken (police, it squeaks).
   Right-click block for everyone (police shield also blocks water). Extra weapons are planned as paid items.
 - 3 hits = K.O. for 3 s. Every K.O. = 1 point for your side.
 - Water-cannon truck: one driver at a time; the jet shoves people (you can't walk against it) and slides bins.

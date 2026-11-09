@@ -44,7 +44,7 @@ export function createMinimap() {
   const g = canvas.getContext('2d');
   const bg = paintBackground();
   const zoom = SIZE / 2 / VIEW_RADIUS; // pixels per metre on the minimap
-  const COLORS = { g: '#f7d417', c: '#7f9dff' };
+  const COLORS = { g: '#ff4a55', c: '#7f9dff' };
 
   // One dot, drawn in minimap pixels (not metres) so it keeps its size.
   const dot = (x, z, r, color, ring = false) => {

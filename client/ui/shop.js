@@ -103,7 +103,9 @@ export function openShop({ highlight = [], onOpen, onClose } = {}) {
     const scrollBox = document.createElement('div');
     scrollBox.className = 'shop-scroll';
 
-    const sections = [['Bundles', BUNDLES.map((b) => cardFor(b, b.desc))]];
+    // Bundles say what the parts would cost on their own.
+    const worth = (b) => b.grants.reduce((sum, k) => sum + (itemProducts().find((p) => p.id === k)?.price ?? 0), 0);
+    const sections = [['Bundles', BUNDLES.map((b) => cardFor(b, `${b.desc} · worth ${formatPrice(worth(b))}`))]];
     const bySlot = {};
     for (const p of itemProducts()) (bySlot[p.slot] ??= []).push(p);
     for (const slot of Object.keys(SLOT_TITLES)) if (bySlot[slot]) sections.push([SLOT_TITLES[slot], bySlot[slot].map((p) => cardFor(p))]);

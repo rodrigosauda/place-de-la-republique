@@ -128,14 +128,14 @@ export function createRiotUi(scene) {
 
     // The end-of-day window. msg = SUMMARY from the server.
     showSummary(msg, onClose, personalNote = '') {
-      const winner = msg.winner === 'draw' ? 'A draw!' : `${FACTIONS[msg.winner].label} win the day!`;
+      const winner = msg.winner === 'draw' ? 'A draw!' : `${FACTIONS[msg.winner].plural} win the day!`;
       summary.innerHTML = '';
       const card = div('menu-card summary', summary);
       const h = document.createElement('h1');
       h.textContent = msg.scn ? `End of the day · ${msg.scn}` : 'End of the day';
       const w = document.createElement('p');
       w.className = 'winner';
-      w.textContent = `${winner}  Yellow Vests ${msg.g} – ${msg.c} Police`;
+      w.textContent = `${winner}  Protesters ${msg.g} – ${msg.c} Police`;
       card.append(h, w);
       if (typeof msg.o === 'number') {
         const o = document.createElement('p');

@@ -42,7 +42,10 @@ export const TOPS = [
   { id: 'red', label: 'Red', color: '#b3262e' },
   { id: 'green', label: 'Green', color: '#3c6e47' },
   { id: 'denim', label: 'Denim', color: '#4b6e9c' },
-  { id: 'mariniere', label: 'Breton stripes', color: '#ecebe6', stripes: '#22304f', premium: true, price: 149 },
+  { id: 'mariniere', label: 'Breton stripes', color: '#ecebe6', stripes: '#22304f', premium: true, price: 100 },
+  // Added later: new entries go at the END so saved outfits (stored as indexes) keep working.
+  { id: 'vest', label: 'Yellow vest', color: '#1d1d1f', vest: true, faction: 'g' }, // the classic gilet jaune, over a black top
+  { id: 'charcoal', label: 'Charcoal', color: '#33353a' },
 ];
 
 export const PANTS = [
@@ -59,11 +62,11 @@ export const HATS = [
   { id: 'cap', label: 'Cap', faction: 'g' },
   { id: 'beret', label: 'Beret', faction: 'g' },
   { id: 'hood', label: 'Hood', faction: 'g' },
-  { id: 'phrygian', label: 'Liberty cap (red)', faction: 'g', premium: true },
-  { id: 'tricolor', label: 'Tricolour beanie', faction: 'g', premium: true },
+  { id: 'phrygian', label: 'Liberty cap (red)', faction: 'g', premium: true, price: 100 },
+  { id: 'tricolor', label: 'Tricolour beanie', faction: 'g', premium: true, price: 100 },
   { id: 'helmet', label: 'Helmet', faction: 'c' },
   { id: 'helmetUp', label: 'Helmet, visor up', faction: 'c' },
-  { id: 'goldHelmet', label: 'Gold helmet', faction: 'c', premium: true, price: 199 },
+  { id: 'goldHelmet', label: 'Gold helmet', faction: 'c', premium: true, price: 200 },
 ];
 
 export const FACES = [
@@ -72,40 +75,41 @@ export const FACES = [
   { id: 'mask', label: 'Face mask' },
   { id: 'scarf', label: 'Checked scarf', faction: 'g' },
   { id: 'gasmask', label: 'Gas mask', faction: 'c' },
-  { id: 'goggles', label: 'Ski goggles', premium: true },
-  { id: 'clown', label: 'Clown nose', premium: true },
+  { id: 'goggles', label: 'Ski goggles', premium: true, price: 50 },
+  { id: 'clown', label: 'Clown nose', premium: true, price: 50 },
+  { id: 'bandana', label: 'Black bandana', faction: 'g' },
 ];
 
 export const BACKS = [
   { id: 'none', label: 'None' },
   { id: 'backpack', label: 'Backpack' },
-  { id: 'umbrella', label: 'Umbrella (back)', faction: 'g', premium: true, price: 149 },
-  { id: 'cape', label: 'Tricolour cape', premium: true, price: 199 },
+  { id: 'umbrella', label: 'Umbrella (back)', faction: 'g', premium: true, price: 100 },
+  { id: 'cape', label: 'Tricolour cape', premium: true, price: 100 },
 ];
 
 export const PLACARDS = [
   { id: 'cardboard', label: 'Cardboard', board: '#c9a46b', ink: '#1a1a1a', frame: '#9c7a45' },
   { id: 'white', label: 'White', board: '#f4f1ea', ink: '#c8102e', frame: '#c8102e' },
-  { id: 'gold', label: 'Gold', board: '#e8c25a', ink: '#3a2a00', frame: '#a37b12', premium: true },
-  { id: 'neon', label: 'Neon', board: '#19e6c1', ink: '#08243a', frame: '#0b8f78', premium: true },
-  { id: 'night', label: 'Night', board: '#1b1d2a', ink: '#f2d36b', frame: '#f2d36b', premium: true },
+  { id: 'gold', label: 'Gold', board: '#e8c25a', ink: '#3a2a00', frame: '#a37b12', premium: true, price: 50 },
+  { id: 'neon', label: 'Neon', board: '#19e6c1', ink: '#08243a', frame: '#0b8f78', premium: true, price: 50 },
+  { id: 'night', label: 'Night', board: '#1b1d2a', ink: '#f2d36b', frame: '#f2d36b', premium: true, price: 50 },
 ];
 
 // Footstep trail: little coloured bits that follow you while you walk (everyone sees it).
 export const TRAILS = [
   { id: 'none', label: 'None' },
-  { id: 'confetti', label: 'Confetti', premium: true, price: 149 },
-  { id: 'feathers', label: 'Rubber-chicken feathers', premium: true, price: 99 },
-  { id: 'tricolor', label: 'Blue-white-red sparks', premium: true, price: 199 },
-  { id: 'gold', label: 'Gold dust', premium: true, price: 199 },
+  { id: 'confetti', label: 'Confetti', premium: true, price: 200 },
+  { id: 'feathers', label: 'Rubber-chicken feathers', premium: true, price: 100 },
+  { id: 'tricolor', label: 'Blue-white-red sparks', premium: true, price: 200 },
+  { id: 'gold', label: 'Gold dust', premium: true, price: 200 },
 ];
 
 // Name flair: how your name looks above your head.
 export const FLAIRS = [
   { id: 'none', label: 'None' },
-  { id: 'star', label: 'Star', premium: true, price: 99 },
-  { id: 'tricolor', label: 'Blue-white-red name', premium: true, price: 149 },
-  { id: 'founder', label: 'Founder (gold name)', premium: true, price: 299 },
+  { id: 'star', label: 'Star', premium: true, price: 50 },
+  { id: 'tricolor', label: 'Blue-white-red name', premium: true, price: 100 },
+  { id: 'founder', label: 'Founder (gold name)', premium: true, price: 200 },
 ];
 
 // Order of the look array sent over the network.
@@ -116,14 +120,14 @@ const CATALOG = { body: BODIES, skin: SKINS, hair: HAIRS, hairColor: HAIR_COLORS
 export function gasProtection(look) {
   const id = FACES[look?.face]?.id;
   if (id === 'gasmask' || id === 'goggles') return 1;
-  if (id === 'mask' || id === 'scarf') return 0.5;
+  if (id === 'mask' || id === 'scarf' || id === 'bandana') return 0.5;
   return 0;
 }
 
 export function defaultLook(faction) {
   return faction === 'c'
     ? { body: 0, skin: 1, hair: 0, hairColor: 0, top: 1, pants: 1, hat: 7, face: 0, back: 0, placard: 0, number: 212, trail: 0, flair: 0 }
-    : { body: 0, skin: 1, hair: 0, hairColor: 1, top: 4, pants: 0, hat: 0, face: 0, back: 0, placard: 0, number: 0, trail: 0, flair: 0 };
+    : { body: 0, skin: 1, hair: 0, hairColor: 1, top: 1, pants: 1, hat: 4, face: 7, back: 0, placard: 0, number: 0, trail: 0, flair: 0 }; // black bloc: black top + trousers, hood up, black bandana
 }
 
 // A varied, free (non-premium) outfit for background extras. `seed` makes it repeatable.
@@ -141,9 +145,22 @@ export function randomLook(faction, seed = 0) {
   look.hairColor = look.body >= 2 ? 5 + rnd(2) : rnd(5); // older people: grey/white hair
   look.pants = pick('pants', PANTS);
   if (faction === 'g') {
-    look.top = pick('top', TOPS);
-    look.hat = rnd(3) === 0 ? 0 : pick('hat', HATS);
-    look.face = rnd(3) === 0 ? pick('face', FACES) : 0;
+    // Mostly black bloc (black/grey, hood up, face covered), some ordinary marchers, a few yellow vests.
+    const kind = rnd(10);
+    if (kind < 6) {
+      look.top = [1, 1, 9, 3][rnd(4)];
+      look.pants = [1, 1, 3][rnd(3)];
+      look.hat = rnd(4) === 0 ? 2 : 4;        // cap or hood
+      look.face = [7, 7, 2, 1][rnd(4)];       // bandana, face mask, sunglasses
+    } else if (kind < 9) {
+      look.top = pick('top', TOPS);
+      look.hat = rnd(3) === 0 ? 0 : pick('hat', HATS);
+      look.face = rnd(3) === 0 ? pick('face', FACES) : 0;
+    } else {
+      look.top = 8;                            // yellow vest
+      look.hat = rnd(2) ? 0 : 1;
+      look.face = 0;
+    }
     look.back = rnd(4) === 0 ? 1 : 0;
   } else {
     look.hat = rnd(4) === 0 ? 8 : 7;

@@ -7,7 +7,7 @@
 // Structure (so effects.js can animate parts):
 //   group                 <- position + facing (rotation.y). Label, bubble, stars live here.
 //   └─ pose               <- tilted when knocked out, lowered when sitting
-//      ├─ torso, head, hair, hat, face, back item, gilet / police vest
+//      ├─ torso, head, hair, hat, face, back item, yellow vest (optional) / police vest
 //      ├─ legs[0..1]      <- hip pivots (rotate x to walk)
 //      ├─ arms[0..1]      <- shoulder pivots (0 = right arm, 1 = left arm)
 //      │   └─ (right hand) weaponPivot -> weapons     (left hand) placard
@@ -78,7 +78,7 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
   const legs = [-1, 1].map((side) => {
     const hip = new THREE.Group();
     hip.position.set(side * 0.11, -0.08, 0);
-    add(hip, new THREE.CapsuleGeometry(0.085, 0.58, 4, 12), crs ? mat(0x141b2b) : pantsMat, 0, -0.37, 0);
+    add(hip, new THREE.CapsuleGeometry(0.085, 0.58, 4, 12), crs ? mat(0x14161c) : pantsMat, 0, -0.37, 0);
     add(hip, rbox(0.13, 0.1, 0.27, 0.04), shoeMat, 0, -0.78, 0.05);
     if (crs) add(hip, new THREE.BoxGeometry(0.16, 0.2, 0.08), mat(0x0c0f16), 0, -0.45, 0.08); // knee pads
     pose.add(hip);
@@ -90,14 +90,14 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
   torso.position.y = -0.08;
   torso.rotation.x = hunch;
   pose.add(torso);
-  const torsoMesh = add(torso, rbox(torsoW, 0.62, 0.24, 0.08), crs ? mat(0x182238) : topMat, 0, 0.33, 0);
+  const torsoMesh = add(torso, rbox(torsoW, 0.62, 0.24, 0.08), crs ? mat(0x15181f) : topMat, 0, 0.33, 0);
   if (female && !crs) add(torso, new THREE.BoxGeometry(torsoW + 0.06, 0.12, 0.27), pantsMat, 0, 0.04, 0); // skirt-ish waist
 
   if (crs) {
     // Tactical vest with POLICE on the back and the unit number.
-    add(torso, rbox(torsoW + 0.04, 0.5, 0.29, 0.06), mat(0x0f1522), 0, 0.36, 0);
+    add(torso, rbox(torsoW + 0.04, 0.5, 0.29, 0.06), mat(0x0d0f14), 0, 0.36, 0);
     const back = canvasTexture(256, 160, (g) => {
-      g.fillStyle = '#0f1522'; g.fillRect(0, 0, 256, 160);
+      g.fillStyle = '#0d0f14'; g.fillRect(0, 0, 256, 160);
       g.fillStyle = '#f2f2f2'; g.font = '900 64px system-ui, sans-serif'; g.textAlign = 'center';
       g.fillText('POLICE', 128, 70);
       g.font = '800 44px system-ui, sans-serif';
@@ -105,19 +105,23 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
     });
     add(torso, new THREE.PlaneGeometry(torsoW, 0.3), new THREE.MeshStandardMaterial({ map: back }), 0, 0.42, -0.151, { ry: Math.PI, shadow: false });
     const front = canvasTexture(128, 48, (g) => {
-      g.fillStyle = '#0f1522'; g.fillRect(0, 0, 128, 48);
+      g.fillStyle = '#0d0f14'; g.fillRect(0, 0, 128, 48);
       g.fillStyle = '#f2f2f2'; g.font = '900 34px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('POLICE', 64, 36);
     });
     add(torso, new THREE.PlaneGeometry(0.26, 0.1), new THREE.MeshStandardMaterial({ map: front }), 0.07, 0.5, 0.151, { shadow: false });
   } else {
-    // The gilet jaune: hi-vis vest with grey reflective stripes (+ your slogan written on the back).
-    const vest = mat(FACTIONS.g.color, { emissive: 0x2a2400 });
-    add(torso, rbox(torsoW + 0.03, 0.46, 0.27, 0.06), vest, 0, 0.36, 0);
-    for (const y of [0.22, 0.4]) add(torso, new THREE.BoxGeometry(torsoW + 0.05, 0.035, 0.29), mat(0xd9d9d9, { emissive: 0x333333 }), 0, y, 0, { shadow: false });
+    // Protesters dress in black; the gilet jaune (hi-vis vest with grey reflective stripes) is an outfit choice.
+    if (top.vest) {
+      const vest = mat(0xf7d417, { emissive: 0x2a2400 });
+      add(torso, rbox(torsoW + 0.03, 0.46, 0.27, 0.06), vest, 0, 0.36, 0);
+      for (const y of [0.22, 0.4]) add(torso, new THREE.BoxGeometry(torsoW + 0.05, 0.035, 0.29), mat(0xd9d9d9, { emissive: 0x333333 }), 0, y, 0, { shadow: false });
+    }
+    // Your slogan written on the back (dark ink on light clothes, white ink on dark ones).
+    const light = top.vest || new THREE.Color(top.color).getHSL({}).l > 0.5;
     if (slogan) {
       const back = canvasTexture(256, 128, (g) => {
         g.fillStyle = 'rgba(0,0,0,0)'; g.clearRect(0, 0, 256, 128);
-        g.fillStyle = '#1a1a1a'; g.textAlign = 'center';
+        g.fillStyle = light ? '#1a1a1a' : '#f2f2f2'; g.textAlign = 'center';
         writeFitted(g, slogan.toUpperCase(), 128, 64, 240, 'italic 800', 34);
       });
       add(torso, new THREE.PlaneGeometry(torsoW, 0.22), new THREE.MeshStandardMaterial({ map: back, transparent: true }), 0, 0.3, -0.141, { ry: Math.PI, shadow: false });
@@ -153,7 +157,7 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
   }
 
   // --- arms (shoulder pivots). 0 = right arm (-x), 1 = left arm (+x) -------
-  const sleeveMat = crs ? mat(0x182238) : topMat;
+  const sleeveMat = crs ? mat(0x15181f) : topMat;
   const arms = [-1, 1].map((side) => {
     const sh = new THREE.Group();
     sh.position.set(side * shoulder, 0.5, hunch * 0.3);
@@ -163,10 +167,12 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
     pose.add(sh);
     return sh;
   });
+  // Protesters: a red armband on the left arm (the team colour), so the sides are easy to tell apart.
+  if (!crs) add(arms[1], new THREE.CylinderGeometry(0.071, 0.071, 0.09, 12), mat(FACTIONS.g.color), 0, -0.16, 0, { shadow: false });
 
   if (role) addRoleGear(torso, arms, role);
 
-  // Weapons in the right hand: 0 = baguette (Yellow Vests), 1 = rubber chicken (Riot Police).
+  // Weapons in the right hand: 0 = baguette (Protesters), 1 = rubber chicken (Riot Police).
   const weaponPivot = new THREE.Group();
   weaponPivot.position.set(0, -0.6, 0);
   weaponPivot.rotation.x = 1.25; // points forward/up when the arm hangs down
@@ -211,7 +217,7 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
     weapons.push(w);
   }
 
-  // Placard held up in the left hand (Gilets with a slogan).
+  // Placard held up in the left hand (protesters with a slogan).
   let placard = null;
   if (!crs && slogan) {
     placard = createPlacard(slogan, PLACARDS[look.placard] ?? PLACARDS[0]);
@@ -340,9 +346,14 @@ function addHat(head, id, top) {
       add(head, new THREE.CylinderGeometry(0.2, 0.17, 0.06, 12), mat(0x1a1a1a), 0.03, 0.13, 0, { rz: -0.25 });
       add(head, new THREE.CylinderGeometry(0.012, 0.012, 0.04, 5), mat(0x1a1a1a), 0.06, 0.18, 0, { rz: -0.25 });
       break;
-    case 'hood':
-      add(head, new THREE.SphereGeometry(0.2, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.62), mat(top.color), 0, 0.0, -0.03, { rx: -0.35 });
+    case 'hood': { // hood up: open at the front so the eyes still show
+      const c = new THREE.Color(top.vest ? '#2b2c30' : top.color);
+      if (c.getHSL({}).l < 0.15) c.offsetHSL(0, 0, 0.05); // a touch lighter than a black top, so the shape reads
+      const cloth = mat(c, { side: THREE.DoubleSide });
+      add(head, new THREE.SphereGeometry(0.205, 16, 10, Math.PI * 0.82, Math.PI * 1.36, 0, Math.PI * 0.72), cloth, 0, 0.01, -0.01);
+      add(head, new THREE.SphereGeometry(0.205, 16, 6, 0, Math.PI * 2, 0, Math.PI * 0.22), cloth, 0, 0.01, -0.01);
       break;
+    }
     case 'phrygian': // the red bonnet of Marianne
       add(head, half(0.175), mat(0xc8102e), 0, 0.03, 0);
       add(head, new THREE.ConeGeometry(0.13, 0.26, 10), mat(0xc8102e), 0, 0.25, 0.04, { rx: 0.55 });
@@ -398,6 +409,12 @@ function addFace(head, id) {
       add(head, new THREE.BoxGeometry(0.28, 0.08, 0.05), mat(0xff8a1f, { metalness: 0.6, roughness: 0.2, emissive: 0x3a1a00 }), 0, 0.03, 0.15, { shadow: false });
       add(head, new THREE.CylinderGeometry(0.168, 0.168, 0.03, 12), mat(0x111111), 0, 0.03, 0, { shadow: false });
       break;
+    case 'bandana': { // black bandana over nose and mouth, knotted at the back, a point under the chin
+      const cloth = mat(0x161618, { side: THREE.DoubleSide });
+      add(head, new THREE.CylinderGeometry(0.172, 0.184, 0.13, 16, 1, true, -Math.PI * 0.62, Math.PI * 1.24), cloth, 0, -0.08, 0, { shadow: false });
+      add(head, new THREE.ConeGeometry(0.1, 0.13, 3), cloth, 0, -0.19, 0.12, { rx: Math.PI, shadow: false }).scale.z = 0.35;
+      break;
+    }
     case 'clown':
       add(head, new THREE.SphereGeometry(0.045, 8, 6), mat(0xe0141e), 0, -0.02, 0.17, { shadow: false });
       break;

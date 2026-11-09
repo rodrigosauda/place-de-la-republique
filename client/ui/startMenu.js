@@ -44,7 +44,7 @@ export function showStartMenu(onPlay) {
         <label for="name">Your name</label>
         <input id="name" name="name" maxlength="${MAX_NAME_LENGTH}" placeholder="Your name" autocomplete="off" required />
 
-        <label for="slogan" class="slogan-label">Your placard (Yellow Vests)</label>
+        <label for="slogan" class="slogan-label">Your placard (Protesters)</label>
         <input id="slogan" name="slogan" maxlength="${MAX_SLOGAN_LENGTH}" placeholder="Lower prices!" autocomplete="off" />
         <div class="slogan-presets">${SLOGAN_PRESETS.map((t) => `<button type="button" class="chip">${t}</button>`).join('')}</div>
 

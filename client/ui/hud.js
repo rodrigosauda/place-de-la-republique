@@ -46,7 +46,7 @@ export function createHud() {
       hit.classList.add('on');
     },
 
-    // A floating number near the opinion bar: delta > 0 helps the protesters (yellow), < 0 the police (blue).
+    // A floating number near the opinion bar: delta > 0 helps the protesters (red), < 0 the police (blue).
     popOpinion(delta, label = '') {
       const pop = document.createElement('div');
       pop.className = 'op-pop ' + (delta > 0 ? 'up' : 'down');
@@ -113,7 +113,7 @@ export function createHud() {
       time.textContent = formatClock(minutes);
       const sc = document.createElement('div');
       sc.className = 'score';
-      sc.innerHTML = `<span class="g">Yellow Vests ${score.g}</span> · <span class="c">Police ${score.c}</span>`;
+      sc.innerHTML = `<span class="g">Protesters ${score.g}</span> · <span class="c">Police ${score.c}</span>`;
       clock.append(time);
       if (scenario) {
         const scn = document.createElement('div');

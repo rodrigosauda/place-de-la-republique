@@ -53,7 +53,7 @@ import { createAdBanner } from './scene/adBanner.js';
 import { lookToArray, arrayToLook, gasProtection, TRAILS } from '../shared/looks.js';
 import { wallet } from './shop/wallet.js';
 
-const FACTION_CSS = { g: '#f7d417', c: '#9fb8ff' };
+const FACTION_CSS = { g: '#ff5a64', c: '#9fb8ff' };
 
 async function start() {
   const forced = new URLSearchParams(location.search).get('scenario'); // testing: ?scenario=act2|halloween|union|act1

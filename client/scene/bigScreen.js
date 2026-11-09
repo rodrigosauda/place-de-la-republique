@@ -1,7 +1,7 @@
 // client/scene/bigScreen.js
 // A giant screen on a building facing the square.
 // Shows the clock, the score of each side and TODAY'S TOP 3 KNOCK-OUTS for the
-// Yellow Vests and for the Police (from the server; empty again at 06:00 when the day restarts).
+// Protesters and for the Police (from the server; empty again at 06:00 when the day restarts).
 // Drawn on a <canvas> and used as a texture; redrawn only when something changes.
 
 import * as THREE from 'three';
@@ -95,7 +95,7 @@ export function createBigScreen(scene) {
       g.font = '800 46px system-ui, sans-serif';
       g.fillText(`PLACE DE LA RÉPUBLIQUE · ${formatClock(minutes)}`, W / 2, 62);
 
-      column(W / 4, '#f7d417', 'YELLOW VESTS', score.g, topKos.g);
+      column(W / 4, '#ff4a55', 'PROTESTERS', score.g, topKos.g);
       column((W * 3) / 4, '#7fa6ff', 'POLICE', score.c, topKos.c);
 
       g.textAlign = 'center';

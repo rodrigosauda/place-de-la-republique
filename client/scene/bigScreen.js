@@ -30,7 +30,8 @@ export function createBigScreen(scene) {
   );
   const group = new THREE.Group();
   group.add(frame, screen);
-  group.position.set(WALL.x + NORMAL.x * 0.6, 12.5, WALL.z + NORMAL.z * 0.6);
+  // 1.5 m out from the wall: in FRONT of the continuous balcony railings (they used to cut across the screen).
+  group.position.set(WALL.x + NORMAL.x * 1.5, 12.5, WALL.z + NORMAL.z * 1.5);
   group.rotation.y = Math.atan2(NORMAL.x, NORMAL.z);
   scene.add(group);
 

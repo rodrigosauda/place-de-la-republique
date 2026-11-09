@@ -5,6 +5,7 @@
 
 import { BUNDLES, SLOT_TITLES, itemProducts, formatPrice, totalPrice } from '../../shared/shop.js';
 import { wallet } from '../shop/wallet.js';
+import { productPicture } from '../shop/thumbs.js';
 
 const FACTION_TAG = { g: 'Protesters only', c: 'Police only' };
 
@@ -75,7 +76,7 @@ export function openShop({ highlight = [], onOpen, onClose } = {}) {
     const note = document.createElement('div');
     note.className = 'shop-sub';
     note.textContent = sub || FACTION_TAG[p.faction] || '';
-    el.append(name, note, priceButton(p));
+    el.append(productPicture(p), name, note, priceButton(p));
     return el;
   }
 

@@ -484,7 +484,7 @@ canvas { display: block; touch-action: none; }
 /* ---------- shop ---------- */
 .shop-overlay { position: fixed; inset: 0; z-index: 60; display: flex; padding: 16px; background: rgba(0, 0, 0, 0.55); overflow-y: auto; }
 .shop-card {
-  margin: auto; width: 100%; max-width: 760px; max-height: calc(100vh - 32px); display: flex; flex-direction: column;
+  margin: auto; width: 100%; max-width: 900px; max-height: calc(100vh - 32px); display: flex; flex-direction: column;
   background: #fff; color: #1d2230; border-radius: 14px; padding: 16px 18px; box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
 }
 .shop-head { display: flex; align-items: center; justify-content: space-between; }
@@ -515,3 +515,40 @@ canvas { display: block; touch-action: none; }
 .sound-box { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 4px; padding: 10px 12px; border-radius: 10px; background: #f1f3f8; font-size: 14px; }
 .sound-box label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .sound-box input[type=range] { flex: 1; }
+
+/* ---------- start menu + outfit editor, cleaner layout (Nov 2026) ---------- */
+.menu-card.wide { max-width: 1020px; flex-wrap: nowrap; align-items: stretch; }
+.menu-left { flex: 0 1 380px; }
+.menu-right { flex: 1 1 560px; display: flex; flex-direction: column; border-left: 1px solid #eceef3; padding-left: 20px; }
+.menu-right > .label { margin-bottom: 8px; }
+.outfit-editor { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: auto auto; gap: 14px; align-items: start; }
+.outfit-side { display: flex; flex-direction: column; gap: 10px; }
+.outfit-preview { width: 240px; height: 300px; flex: none; background: radial-gradient(circle at 50% 35%, #f4f6fa, #cfd5df); }
+.outfit-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.outfit-presets .outfit-title { flex-basis: 100%; margin: 0; }
+.menu-card .outfit-item.preset, .modal-card .outfit-item.preset, .outfit-item.preset { padding: 7px 11px; font-size: 12.5px; background: #f3f5f9; }
+.outfit-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.outfit-tabs { display: flex; gap: 4px; border-bottom: 2px solid #eceef3; }
+.menu-card .outfit-tab, .modal-card .outfit-tab, .outfit-tab {
+  margin: 0 0 -2px; padding: 8px 14px; border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  background: none; color: #667; font-size: 13.5px; font-weight: 700; cursor: pointer;
+}
+.menu-card .outfit-tab:hover, .modal-card .outfit-tab:hover, .outfit-tab:hover { background: none; color: #002395; }
+.menu-card .outfit-tab.on, .modal-card .outfit-tab.on, .outfit-tab.on { color: #002395; border-bottom-color: #002395; }
+.outfit-options, .menu-card .outfit-options { max-height: none; overflow: visible; gap: 14px; padding: 0; }
+.outfit-locked { grid-column: 1 / -1; }
+.menu-card details.controls summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: #555; }
+.menu-card details.controls .help { margin-top: 6px; }
+.faction { flex-direction: column; align-items: flex-start; gap: 2px; }
+.faction .fname { display: flex; align-items: center; gap: 8px; }
+.faction small { font-weight: 500; font-size: 11.5px; color: #667; }
+@media (max-width: 860px) {
+  .menu-card.wide { flex-wrap: wrap; }
+  .menu-right { border-left: 0; padding-left: 0; }
+  .outfit-editor { grid-template-columns: 1fr; }
+  .outfit-side { align-items: center; }
+}
+/* shop pictures (drawn from the game's 3D character, see client/shop/thumbs.js) */
+.shop-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.shop-pic { display: block; width: 100%; height: auto; aspect-ratio: 1; border-radius: 8px; background: radial-gradient(circle at 50% 35%, #f4f6fa, #cfd5df); opacity: 0.35; transition: opacity 0.2s; }
+.shop-pic.ready { opacity: 1; }

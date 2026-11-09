@@ -124,6 +124,7 @@ export function buildWorld(scene, physics) {
   for (let i = 0; i < MAP.trees.length; i += 3) {
     const x = MAP.trees[i] / 10, z = MAP.trees[i + 1] / 10;
     if (Math.hypot(x, z) < 11 || nearBase(x, z, 1.5)) continue;
+    if (x > 20 && x < 52 && z > 44 && z < 57) continue; // keep the view of the big screen free (south façade)
     if (LOW_QUALITY && Math.hypot(x, z) > 170) continue;
     trees.push([x, z, MAP.trees[i + 2] || 12 + rand() * 6]);
   }

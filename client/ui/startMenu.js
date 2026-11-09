@@ -19,21 +19,20 @@ export function showStartMenu(onPlay) {
     <form class="menu-card wide">
       <div class="menu-left">
         <h1>Place de la République</h1>
-        <p class="subtitle">A protest day on Place de la République in Paris: the crowd gathers in the morning, marches at 14:00,
-          clashes with the police at 17:00, and the curfew starts at 23:00. Pick a side. Cartoon brawls only: 3 bonks and you're K.O. Protesters fight with a baguette, police with a rubber chicken.</p>
+        <p class="subtitle">One protest day in Paris: march at 14:00, clashes at 17:00, curfew at 23:00. Pick a side. Cartoon brawls only (baguette vs rubber chicken).</p>
 
         <p class="today"><b>On the square right now: ${scenarioLabel()}.</b> ${currentScenario().blurb}</p>
         <p class="lastday" hidden></p>
         <p class="streak" hidden></p>
         <p class="online" hidden></p>
 
-        <span class="label">Faction</span>
+        <span class="label">Your side</span>
         <div class="factions">
           ${Object.entries(FACTIONS).map(([code, f], i) => `
             <label class="faction">
               <input type="radio" name="faction" value="${code}" ${i === 0 ? 'checked' : ''} />
-              <span class="swatch" style="background:#${f.color.toString(16).padStart(6, '0')}"></span>
-              <span>${f.label}<em class="count" data-f="${code}"></em></span>
+              <span class="fname"><span class="swatch" style="background:#${f.color.toString(16).padStart(6, '0')}"></span>${f.plural}</span>
+              <small>${code === 'g' ? 'Black bloc, red armband' : 'Helmet, shield, black uniform'}<em class="count" data-f="${code}"></em></small>
             </label>`).join('')}
         </div>
 
@@ -54,12 +53,14 @@ export function showStartMenu(onPlay) {
           <button type="button" class="menu-shop" title="Hats, trails and name flair. Cosmetic only.">Shop</button>
           <button type="button" class="watch" title="Walk around the square as a spectator: no body, no score, nobody can hit you">Just watch</button>
         </div>
+        <details class="controls"><summary>Controls and rules</summary>
         <p class="help">Mouse: look around · Shift: run · C: dodge roll · Click / F: hit · Right mouse / Q: block · G: grab/throw ·
           E: truck · H: tear gas (Police) · R: role ability · P: missions and badges · T: emotes · V: tag a wall · Enter: chat · 1–4: chants · M: mute · Esc: free the mouse</p>
         <p class="help">Violence backfires: a K.O. costs public opinion for whoever strikes. Hold the route, chant together and keep the march peaceful.
           Inspired by the real protests in France in autumn 2026. Fictional characters, cartoon brawls only.</p>
+        </details>
       </div>
-      <div class="menu-right"></div>
+      <div class="menu-right"><span class="label">Your character</span></div>
     </form>`;
   document.body.appendChild(overlay);
 

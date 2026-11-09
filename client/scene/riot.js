@@ -755,9 +755,15 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         place(P.torso, i, 0, 1.12, 0, 0, 0, 0, 1.1, 1.05, 1.15);
         place(P.head, i, 0, 1.56, 0.01);
         place(P.helmet, i, 0, 1.6, 0);
-        place(P.visor, i, 0, 1.55, 0.135, -0.15);
-        place(P.armL, i, 0.27, 1.38, 0, -1.1, 0, 0.25);               // holding the shield forward
-        place(P.shield, i, 0.12, 1.05, 0.42, 0, -0.15);
+        // Not every officer looks the same: some have the visor up, some brawlers carry no shield.
+        if (i % 3 === 1) place(P.visor, i, 0, 1.72, 0.1, -1.1); else place(P.visor, i, 0, 1.55, 0.135, -0.15);
+        if (!c.inLine && i % 4 === 2) {
+          place(P.armL, i, 0.27, 1.38, 0, swing * 0.8, 0, 0.08);
+          P.shield.setMatrixAt(i, HIDDEN);
+        } else {
+          place(P.armL, i, 0.27, 1.38, 0, -1.1, 0, 0.25);               // holding the shield forward
+          place(P.shield, i, 0.12, 1.05, 0.42, 0, -0.15);
+        }
         place(P.armR, i, -0.27, 1.38, 0, batonArm, 0, -0.1);
         place(P.baton, i, -0.27, 1.38, 0, batonArm, 0, -0.1);
       }

@@ -18,7 +18,7 @@ const W = 16, H = 9;                                // metres
 // x = -51 was hidden behind the plane trees from everywhere. Keep it low on the wall (its top stays under
 // the cornice at about 20 m). The big screen (bigScreen.js) is on the same wall to the RIGHT (x 26-41),
 // so the banner sits on the left part (x 4.5-20.5) and the two never overlap.
-const WALL_OFFSET = 0.8;                               // metres in front of the wall (brackets bridge the gap)
+const WALL_OFFSET = 1.5;                               // metres in front of the wall (brackets bridge the gap)
 const POSITION = new THREE.Vector3(12.5, 10.5, 57.9 + (12.5 - 19.7) * -0.0475 - WALL_OFFSET);
 const FACING = new THREE.Vector3(-0.0475, 0, -1).normalize(); // the banner faces the square (north)
 const ROTATE_MS = 30000;

@@ -20,15 +20,18 @@ import { openShop } from './shop.js';
 const EVERYTHING = { has: () => true }; // "owned" set used only to decide which items this side may SEE
 
 // Remember the last outfit per faction in this browser (nice to have; works without).
+// LOOK_VERSION 2 = the black bloc look (Nov 2026): outfits saved before that start again from the new default,
+// so nobody is still walking around in the old colours by accident (shop items stay owned).
+const LOOK_VERSION = 2;
 export function loadSavedLook(faction) {
   try {
     const saved = JSON.parse(localStorage.getItem('look_' + faction));
-    if (saved) return { ...defaultLook(faction), ...saved };
+    if (saved && saved.v === LOOK_VERSION) return { ...defaultLook(faction), ...saved };
   } catch { /* ignore */ }
   return defaultLook(faction);
 }
 export function saveLook(faction, look) {
-  try { localStorage.setItem('look_' + faction, JSON.stringify(look)); } catch { /* ignore */ }
+  try { localStorage.setItem('look_' + faction, JSON.stringify({ ...look, v: LOOK_VERSION })); } catch { /* ignore */ }
 }
 
 // Returns { element, getLook(), destroy() }. `onChange(look)` fires on every change.
@@ -43,11 +46,22 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
   const strip = document.createElement('div');
   strip.className = 'outfit-locked';
   strip.style.display = 'none';
-  root.append(previewBox, options, strip);
+  // Left: the character + quick looks. Right: tabs with the options of one group at a time.
+  const side = document.createElement('div');
+  side.className = 'outfit-side';
+  const presetsBox = document.createElement('div');
+  presetsBox.className = 'outfit-presets';
+  side.append(previewBox, presetsBox);
+  const panel = document.createElement('div');
+  panel.className = 'outfit-panel';
+  const tabsBar = document.createElement('div');
+  tabsBar.className = 'outfit-tabs';
+  panel.append(tabsBar, options);
+  root.append(side, panel, strip);
   const badges = [];
 
   // ---------------------------------------------------------------- 3D preview
-  const W = 220, H = 260;
+  const W = 240, H = 300;
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(W, H);
@@ -122,9 +136,30 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
   const offWallet = wallet.onChange(refreshLocks);
   const changed = () => { rebuild(); refreshLocks(); onChange?.({ ...look }); };
 
+  // Tabs: each row belongs to one group; only the open group is shown (no long scrolling list).
+  const GROUPS = [['clothes', 'Clothes'], ['head', 'Head'], ['body', 'Body'], ['extras', 'Extras']];
+  let group = 'clothes';
+  const tabButtons = GROUPS.map(([id, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'outfit-tab' + (id === group ? ' on' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => { group = id; showGroup(); });
+    tabsBar.appendChild(b);
+    return [id, b];
+  });
+  function showGroup() {
+    for (const [id, b] of tabButtons) b.classList.toggle('on', id === group);
+    options.querySelectorAll('.outfit-row').forEach((r) => { r.style.display = r.dataset.group === group ? '' : 'none'; });
+  }
+  let rowGroup = 'clothes';
+  const rowButtons = {}; // slot -> (index -> button), to update the selection when a quick look is picked
+
   function row(title, slot, list, render) {
     const r = document.createElement('div');
     r.className = 'outfit-row';
+    r.dataset.group = rowGroup;
+    rowButtons[slot] = {};
     const h = document.createElement('div');
     h.className = 'outfit-title';
     h.textContent = title;
@@ -144,6 +179,7 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
         b.appendChild(badge);
         badges.push(badge);
       }
+      rowButtons[slot][i] = b;
       b.addEventListener('click', () => {
         look[slot] = i;
         items.querySelectorAll('.selected').forEach((n) => n.classList.remove('selected'));
@@ -164,21 +200,26 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
     b.append(dot, document.createTextNode(item.label));
   };
 
-  row('Character', 'body', BODIES, text);
-  row('Skin', 'skin', SKINS, swatch);
-  row('Hairstyle', 'hair', HAIRS, text);
-  row('Hair colour', 'hairColor', HAIR_COLORS, swatch);
+  rowGroup = 'clothes';
   if (faction === 'g') row('Top', 'top', TOPS, colorLabel);
   row('Trousers', 'pants', PANTS, colorLabel);
+  row('Back', 'back', BACKS, text);
+  rowGroup = 'head';
   row(faction === 'c' ? 'Helmet' : 'Hat', 'hat', HATS, text);
   row('Face', 'face', FACES, text);
-  row('Back', 'back', BACKS, text);
+  row('Hairstyle', 'hair', HAIRS, text);
+  row('Hair colour', 'hairColor', HAIR_COLORS, swatch);
+  rowGroup = 'body';
+  row('Character', 'body', BODIES, text);
+  row('Skin', 'skin', SKINS, swatch);
+  rowGroup = 'extras';
   if (faction === 'g') row('Placard', 'placard', PLACARDS, text);
   row('Footstep trail', 'trail', TRAILS, text);
   row('Name flair', 'flair', FLAIRS, text);
   if (faction === 'c') {
     const r = document.createElement('div');
     r.className = 'outfit-row';
+    r.dataset.group = 'extras';
     r.innerHTML = '<div class="outfit-title">Unit number</div>';
     const input = document.createElement('input');
     input.type = 'number';
@@ -195,6 +236,33 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
     options.appendChild(r);
   }
 
+  // Quick looks: one click for a complete outfit in the agreed style (you can still change every part).
+  const PRESETS = faction === 'g'
+    ? [['Black bloc', { top: 1, pants: 1, hat: 4, face: 7 }], ['Grey hoodie', { top: 3, pants: 3, hat: 4, face: 2 }],
+      ['Marcher', { top: 0, pants: 0, hat: 0, face: 0 }], ['Yellow vest', { top: 8, pants: 0, hat: 1, face: 0 }]]
+    : [['Riot gear', { hat: 7, face: 0 }], ['Gas mask', { hat: 7, face: 4 }], ['Visor up', { hat: 8, face: 0 }], ['Sunglasses', { hat: 8, face: 1 }]];
+  const presetTitle = document.createElement('div');
+  presetTitle.className = 'outfit-title';
+  presetTitle.textContent = 'Quick looks';
+  presetsBox.appendChild(presetTitle);
+  for (const [label, parts] of PRESETS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'outfit-item preset';
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      for (const [slot, i] of Object.entries(parts)) {
+        if (!itemAllowed(slot, i, faction, EVERYTHING)) continue;
+        look[slot] = i;
+        const btns = rowButtons[slot] || {};
+        for (const [k, btn] of Object.entries(btns)) btn.classList.toggle('selected', Number(k) === i);
+      }
+      changed();
+    });
+    presetsBox.appendChild(b);
+  }
+
+  showGroup();
   refreshLocks();
 
   return {

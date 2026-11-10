@@ -130,7 +130,7 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
     const buy = document.createElement('button');
     buy.type = 'button';
     buy.textContent = `Shop · ${formatPrice(totalPrice(locked.map((l) => l[0]), wallet.owned))}`;
-    buy.addEventListener('click', () => openShop({ highlight: locked.map((l) => l[0]) }));
+    buy.addEventListener('click', () => openShop({ highlight: locked.map((l) => l[0]), faction, look: { ...look } }));
     strip.append(msg, buy);
   }
   const offWallet = wallet.onChange(refreshLocks);
@@ -196,7 +196,7 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
   const colorLabel = (b, item) => {
     const dot = document.createElement('span');
     dot.className = 'dot';
-    dot.style.background = item.stripes ? `repeating-linear-gradient(0deg, ${item.color} 0 3px, ${item.stripes} 3px 6px)` : item.color;
+    dot.style.background = item.vest ? '#f7d417' : item.stripes ? `repeating-linear-gradient(0deg, ${item.color} 0 3px, ${item.stripes} 3px 6px)` : item.color;
     b.append(dot, document.createTextNode(item.label));
   };
 

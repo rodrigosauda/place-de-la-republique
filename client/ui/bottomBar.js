@@ -150,7 +150,7 @@ export function createBottomBar({ onEmote, onTag, onChat, onOutfitSaved, onOpenW
   bar.addEventListener('click', (e) => {
     const id = e.target.closest('button')?.dataset.id;
     if (id === 'outfit') openOutfit();
-    if (id === 'shop') openShop({ onOpen: onOpenWindow, onClose: onCloseWindow });
+    if (id === 'shop') { const ctx = getOutfitContext(); openShop({ faction: ctx.faction, look: ctx.look, slogan: ctx.slogan, onOpen: onOpenWindow, onClose: onCloseWindow }); }
     if (id === 'emotes') (picker.style.display === 'none' ? openPicker() : closePicker());
     if (id === 'tag') onTag();
     if (id === 'chat') onChat();

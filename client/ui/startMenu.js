@@ -1,6 +1,8 @@
 // client/ui/startMenu.js
-// The HTML overlay shown before playing: name, faction, placard slogan and
-// the outfit editor (with a live 3D preview). Calls onPlay(...) once.
+// The first screen, in two simple steps:
+//   1. Pick a side (two big cards with your character), type your name, Play.
+//   2. Optional: "Customise character" opens the outfit editor, placard text and role, then "Done".
+// Calls onPlay(...) once.
 
 import { FACTIONS, MAX_NAME_LENGTH, MAX_SLOGAN_LENGTH, ROLES, roleFor, badgeText, badgeForDays } from '../../shared/constants.js';
 import { loadProfile, updateProfile } from '../profile.js';
@@ -8,120 +10,147 @@ import { createOutfitEditor, loadSavedLook, saveLook } from './outfitEditor.js';
 import { currentScenario, scenarioLabel } from '../../shared/timeline.js';
 import { loadProgress, levelProgress } from './progress.js';
 import { openShop } from './shop.js';
+import { lookPicture } from '../shop/thumbs.js';
 import { sfx } from '../audio/sfx.js';
 
 const SLOGAN_PRESETS = ['Lower prices!', 'Fair wages', 'Hands off pensions', 'We want to be heard', 'Peaceful and loud', 'Our future!'];
+const SIDE_TEXT = {
+  g: 'March, hold the square, tag the walls. Fight with a baguette.',
+  c: 'Hold the line, clear the barricades. Fight with a rubber chicken.',
+};
+const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
 
 export function showStartMenu(onPlay) {
   const overlay = document.createElement('div');
   overlay.className = 'menu-overlay';
   overlay.innerHTML = `
-    <form class="menu-card wide">
-      <div class="menu-left">
-        <h1>Place de la République</h1>
-        <p class="subtitle">One protest day in Paris: march at 14:00, clashes at 17:00, curfew at 23:00. Pick a side. Cartoon brawls only (baguette vs rubber chicken).</p>
+    <form class="menu-card start">
+      <section class="step-home">
+        <header class="start-head">
+          <h1>Place de la République</h1>
+          <p class="subtitle">One protest day in Paris. Pick a side and join in. Cartoon brawls only.</p>
+          <p class="today"><b>Today: ${scenarioLabel()}.</b> ${currentScenario().blurb}</p>
+        </header>
 
-        <p class="today"><b>On the square right now: ${scenarioLabel()}.</b> ${currentScenario().blurb}</p>
-        <p class="lastday" hidden></p>
-        <p class="streak" hidden></p>
-        <p class="online" hidden></p>
-
-        <span class="label">Your side</span>
-        <div class="factions">
+        <div class="side-cards">
           ${Object.entries(FACTIONS).map(([code, f], i) => `
-            <label class="faction">
+            <label class="side-card" data-f="${code}" style="--team:${hex(f.color)}">
               <input type="radio" name="faction" value="${code}" ${i === 0 ? 'checked' : ''} />
-              <span class="fname"><span class="swatch" style="background:#${f.color.toString(16).padStart(6, '0')}"></span>${f.plural}</span>
-              <small>${code === 'g' ? 'Black bloc, red armband' : 'Helmet, shield, black uniform'}<em class="count" data-f="${code}"></em></small>
+              <img class="side-pic" alt="${f.plural}" width="220" height="220" />
+              <span class="side-name">${f.plural}</span>
+              <span class="side-text">${SIDE_TEXT[code]}</span>
+              <span class="side-count count" data-f="${code}"></span>
             </label>`).join('')}
         </div>
 
-        <span class="label">Role (optional)</span>
-        <div class="roles"></div>
-        <p class="role-blurb"></p>
-
-        <label for="name">Your name</label>
-        <input id="name" name="name" maxlength="${MAX_NAME_LENGTH}" placeholder="Your name" autocomplete="off" required />
-
-        <label for="slogan" class="slogan-label">Your placard (Protesters)</label>
-        <input id="slogan" name="slogan" maxlength="${MAX_SLOGAN_LENGTH}" placeholder="Lower prices!" autocomplete="off" />
-        <div class="slogan-presets">${SLOGAN_PRESETS.map((t) => `<button type="button" class="chip">${t}</button>`).join('')}</div>
-
-        <label class="sound-opt"><input type="checkbox" id="sound-on" /> Sound on (you can change it any time in Menu, or press M)</label>
-        <div class="menu-actions">
-          <button type="submit">Play</button>
-          <button type="button" class="menu-shop" title="Hats, trails and name flair. Cosmetic only.">Shop</button>
-          <button type="button" class="watch" title="Walk around the square as a spectator: no body, no score, nobody can hit you">Just watch</button>
+        <div class="start-row">
+          <input id="name" name="name" maxlength="${MAX_NAME_LENGTH}" placeholder="Your name" autocomplete="off" required aria-label="Your name" />
+          <button type="submit" class="play">Play</button>
         </div>
+        <div class="start-links">
+          <button type="button" class="link customise">✎ Customise character</button>
+          <button type="button" class="link menu-shop">Shop</button>
+          <button type="button" class="link watch" title="Walk around as a spectator: no body, no score, nobody can hit you">Just watch</button>
+        </div>
+        <p class="online" hidden></p>
+        <p class="streak" hidden></p>
+        <p class="lastday" hidden></p>
         <details class="controls"><summary>Controls and rules</summary>
-        <p class="help">Mouse: look around · Shift: run · C: dodge roll · Click / F: hit · Right mouse / Q: block · G: grab/throw ·
-          E: truck · H: tear gas (Police) · R: role ability · P: missions and badges · T: emotes · V: tag a wall · Enter: chat · 1–4: chants · M: mute · Esc: free the mouse</p>
-        <p class="help">Violence backfires: a K.O. costs public opinion for whoever strikes. Hold the route, chant together and keep the march peaceful.
-          Inspired by the real protests in France in autumn 2026. Fictional characters, cartoon brawls only.</p>
+          <p class="help">Mouse: look around · Shift: run · C: dodge roll · Click / F: hit · Right mouse / Q: block · G: grab/throw ·
+            E: truck · H: tear gas (Police) · R: role ability · P: missions and badges · T: emotes · V: tag a wall · Enter: chat · 1–4: chants · M: mute · Esc: free the mouse</p>
+          <p class="help">Violence backfires: a K.O. costs public opinion for whoever strikes. Hold the route, chant together and keep the march peaceful.
+            Inspired by the real protests in France in autumn 2026. Fictional characters, cartoon brawls only.</p>
+          <label class="sound-opt"><input type="checkbox" id="sound-on" /> Sound on (or press M in the game)</label>
         </details>
-      </div>
-      <div class="menu-right"><span class="label">Your character</span></div>
+      </section>
+
+      <section class="step-custom" hidden>
+        <div class="custom-head">
+          <button type="button" class="link back">← Back</button>
+          <h2>Your <span class="custom-side"></span></h2>
+          <button type="button" class="done">Done</button>
+        </div>
+        <div class="custom-editor"></div>
+        <div class="custom-extra">
+          <div class="custom-slogan">
+            <label for="slogan" class="slogan-label">Text on your placard</label>
+            <input id="slogan" name="slogan" maxlength="${MAX_SLOGAN_LENGTH}" placeholder="Lower prices!" autocomplete="off" />
+            <div class="slogan-presets">${SLOGAN_PRESETS.map((t) => `<button type="button" class="chip">${t}</button>`).join('')}</div>
+          </div>
+          <div class="custom-role">
+            <span class="label">Role (optional)</span>
+            <div class="roles"></div>
+            <p class="role-blurb"></p>
+          </div>
+        </div>
+      </section>
     </form>`;
   document.body.appendChild(overlay);
 
   const form = overlay.querySelector('form');
-  const nameInput = form.querySelector('#name');
-  const sloganInput = form.querySelector('#slogan');
-  const right = form.querySelector('.menu-right');
+  const $ = (s) => form.querySelector(s);
+  const nameInput = $('#name');
+  const sloganInput = $('#slogan');
   try {
     nameInput.value = localStorage.getItem('playerName') || '';
     sloganInput.value = localStorage.getItem('playerSlogan') || '';
   } catch { /* ignore */ }
   nameInput.focus();
 
-  // ---- what happened last time, and your streak (the browser remembers you)
+  // ---- welcome back, last day, who is online
   const profile = loadProfile();
-  const streakEl = form.querySelector('.streak');
   if (profile.days > 0) {
     const stars = badgeText(badgeForDays(profile.days));
-    const nextAt = [3, 7, 15].find((n) => profile.days < n);
-    streakEl.hidden = false;
     const lv = levelProgress(loadProgress(profile).xp).level;
-    streakEl.textContent = `Welcome back${stars ? ' ' + stars : ''}. Level ${lv} · Day streak: ${profile.streak} · ${profile.days} day${profile.days > 1 ? 's' : ''} played · ${profile.wins} day${profile.wins === 1 ? '' : 's'} won`
-      + (nextAt ? ` · next star at ${nextAt} days` : '');
+    const el = $('.streak');
+    el.hidden = false;
+    el.textContent = `Welcome back${stars ? ' ' + stars : ''} · Level ${lv} · ${profile.streak}-day streak · ${profile.wins} day${profile.wins === 1 ? '' : 's'} won`;
   }
-  const lastEl = form.querySelector('.lastday');
-  const winnerText = (r) => (r.winner === 'draw' ? 'ended in a draw' : `${FACTIONS[r.winner]?.plural ?? 'Nobody'} won`)
-    + ` ${r.g}–${r.c} · opinion ${r.o}% with the protesters`
-    + (r.top?.length ? ` · top: ${r.top.map(([n, , pts]) => `${n} ${pts}`).join(', ')}` : '');
-  fetch(`/last?room=${encodeURIComponent(new URLSearchParams(location.search).get('room') || 'main')}`)
+  const room = new URLSearchParams(location.search).get('room') || 'main';
+  fetch(`/last?room=${encodeURIComponent(room)}`)
     .then((r) => (r.ok ? r.json() : null))
-    .then((r) => { if (r && r.scn) { lastEl.hidden = false; lastEl.textContent = `Last day (${r.scn}): ${winnerText(r)}. Can you change that today?`; } })
+    .then((r) => {
+      if (!r || !r.scn) return;
+      const el = $('.lastday');
+      el.hidden = false;
+      el.textContent = `Yesterday: ${r.winner === 'draw' ? 'a draw' : `${FACTIONS[r.winner]?.plural ?? 'Nobody'} won`} ${r.g}–${r.c}. Can you change that today?`;
+    })
     .catch(() => {});
-
-  // ---- who is on the square right now (refreshed while the menu is open)
-  const onlineEl = form.querySelector('.online');
-  const roomName = new URLSearchParams(location.search).get('room') || 'main';
-  const loadOnline = () => fetch(`/online?room=${encodeURIComponent(roomName)}`)
+  const onlineEl = $('.online');
+  const loadOnline = () => fetch(`/online?room=${encodeURIComponent(room)}`)
     .then((r) => (r.ok ? r.json() : null))
     .then((o) => {
       if (!o) return;
-      form.querySelectorAll('.count').forEach((el) => { el.textContent = o[el.dataset.f] ? ` · ${o[el.dataset.f]} online` : ''; });
+      form.querySelectorAll('.count').forEach((el) => { el.textContent = o[el.dataset.f] ? `${o[el.dataset.f]} playing now` : ''; });
       onlineEl.hidden = false;
-      const parts = [`${o.g} protester${o.g === 1 ? '' : 's'}`, `${o.c} police`];
-      if (o.watching) parts.push(`${o.watching} watching`);
       onlineEl.textContent = o.total
-        ? `On the square right now: ${parts.join(', ')}.${o.g !== o.c ? ` ${o.g < o.c ? 'Protesters' : 'Police'} could use more players.` : ''}`
-        : 'Nobody is playing right now: you would be the first on the square. Share the link and invite a friend.';
+        ? `${o.total} on the square right now.${o.g !== o.c ? ` The ${o.g < o.c ? 'protesters' : 'police'} need more players.` : ''}`
+        : 'Nobody is on the square yet: you would be the first. Share the link with a friend.';
     })
     .catch(() => {});
   loadOnline();
   const onlineTimer = setInterval(loadOnline, 10000);
 
-  form.querySelectorAll('.chip').forEach((chip) => chip.addEventListener('click', () => {
-    sloganInput.value = chip.textContent;
-    buildEditor(); // redraw the placard in the preview
-  }));
-
+  // ---- side, outfit pictures
   let faction = 'g';
   let role = profile.role || '';
-  const rolesEl = form.querySelector('.roles');
-  const roleBlurb = form.querySelector('.role-blurb');
+  const looks = { g: loadSavedLook('g'), c: loadSavedLook('c') };
+  const drawCards = () => {
+    for (const code of Object.keys(FACTIONS)) {
+      const img = form.querySelector(`.side-card[data-f="${code}"] .side-pic`);
+      try { img.src = lookPicture(code, looks[code]); } catch { /* no WebGL: the card works without a picture */ }
+    }
+  };
+  // Draw after the first paint so the menu shows at once.
+  requestAnimationFrame(() => setTimeout(drawCards, 0));
+  form.querySelectorAll('input[name=faction]').forEach((r) => r.addEventListener('change', () => {
+    faction = new FormData(form).get('faction');
+  }));
+
+  // ---- step 2: customise
+  let editor = null;
+  const rolesEl = $('.roles');
+  const roleBlurb = $('.role-blurb');
   const buildRoles = () => {
     role = roleFor(role, faction);
     rolesEl.innerHTML = '';
@@ -133,56 +162,64 @@ export function showStartMenu(onPlay) {
       b.onclick = () => { role = code; buildRoles(); };
       rolesEl.append(b);
     }
-    roleBlurb.textContent = role ? ROLES[role].blurb : 'No role: you just play your side. Roles add one ability on the R key.';
+    roleBlurb.textContent = role ? ROLES[role].blurb : 'No role: you just play your side. A role adds one ability on the R key.';
   };
-  let editor = null;
-  let look = null;
   const buildEditor = () => {
     editor?.destroy();
-    look = loadSavedLook(faction);
     editor = createOutfitEditor({
-      faction, look, slogan: sloganInput.value.trim(),
-      onChange: (l) => { look = l; saveLook(faction, l); },
+      faction, look: looks[faction], slogan: sloganInput.value.trim(),
+      onChange: (l) => { looks[faction] = l; saveLook(faction, l); },
     });
-    right.appendChild(editor.element);
+    $('.custom-editor').appendChild(editor.element);
   };
-
-  const updateFaction = () => {
-    faction = new FormData(form).get('faction');
-    buildRoles();
-    sloganInput.disabled = faction !== 'g';
-    form.querySelector('.slogan-label').style.opacity = faction === 'g' ? 1 : 0.4;
-    form.querySelector('.slogan-presets').style.display = faction === 'g' ? '' : 'none';
-    buildEditor();
+  const showCustom = (on) => {
+    $('.step-home').hidden = on;
+    $('.step-custom').hidden = !on;
+    if (on) {
+      $('.custom-side').textContent = faction === 'c' ? 'police officer' : 'protester';
+      $('.custom-slogan').hidden = faction !== 'g';
+      buildRoles();
+      buildEditor();
+    } else {
+      editor?.destroy();
+      editor = null;
+      drawCards();
+      nameInput.focus();
+    }
   };
-  form.querySelectorAll('input[name=faction]').forEach((r) => r.addEventListener('change', updateFaction));
-  sloganInput.addEventListener('change', buildEditor); // redraw the placard in the preview
-  updateFaction();
+  $('.customise').addEventListener('click', () => showCustom(true));
+  $('.back').addEventListener('click', () => showCustom(false));
+  $('.done').addEventListener('click', () => showCustom(false));
+  form.querySelectorAll('.chip').forEach((chip) => chip.addEventListener('click', () => {
+    sloganInput.value = chip.textContent;
+    buildEditor(); // redraw the placard in the preview
+  }));
+  sloganInput.addEventListener('change', buildEditor);
 
+  // ---- play / watch / shop
+  const finish = () => { editor?.destroy(); clearInterval(onlineTimer); overlay.remove(); };
   form.addEventListener('submit', (e) => {
     e.preventDefault();
+    if (!$('.step-custom').hidden) { showCustom(false); return; } // Enter in the placard field = Done
     const name = nameInput.value.trim().slice(0, MAX_NAME_LENGTH) || 'Anonymous';
     const slogan = faction === 'g' ? sloganInput.value.trim() || 'Lower prices!' : '';
     try {
       localStorage.setItem('playerName', name);
       localStorage.setItem('playerSlogan', sloganInput.value.trim());
     } catch { /* ignore */ }
-    const finalLook = editor.getLook();
-    editor.destroy();
-    clearInterval(onlineTimer);
-    overlay.remove();
+    role = roleFor(role, faction);
+    const look = { ...looks[faction] };
+    delete look.v;
+    finish();
     updateProfile({ role });
-    onPlay({ name, faction, slogan, look: finalLook, role });
+    onPlay({ name, faction, slogan, look, role });
   });
-
-  const soundOn = form.querySelector('#sound-on');
+  const soundOn = $('#sound-on');
   soundOn.checked = !sfx.settings.muted;
   soundOn.addEventListener('change', () => sfx.setMuted(!soundOn.checked));
-  form.querySelector('.menu-shop').addEventListener('click', () => openShop({}));
-  form.querySelector('.watch').addEventListener('click', () => {
-    editor.destroy();
-    clearInterval(onlineTimer);
-    overlay.remove();
-    onPlay({ spectate: true });
-  });
+  $('.menu-shop').addEventListener('click', () => openShop({
+    faction, look: looks[faction], slogan: sloganInput.value.trim(),
+    onClose: () => { looks.g = loadSavedLook('g'); looks.c = loadSavedLook('c'); drawCards(); },
+  }));
+  $('.watch').addEventListener('click', () => { finish(); onPlay({ spectate: true }); });
 }

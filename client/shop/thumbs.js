@@ -85,6 +85,12 @@ function draw(p) {
     if (keys.length === 1 && (slot === 'hat' || slot === 'face')) close = true;
     if (keys.length === 1 && slot === 'back') back = true;
   }
+  return drawLook(faction, look, { slogan, close, back, trail });
+}
+
+// Draw one character (used for products and for the side cards on the start screen).
+function drawLook(faction, look, { slogan = '', close = false, back = false, trail = null, full = false } = {}) {
+  if (!renderer) setup();
   const mesh = createPlayerMesh('', faction, false, slogan, true, look);
   for (const o of [mesh.userData.parts.label, mesh.userData.parts.bubble]) { if (o) { mesh.remove(o); o.element?.remove(); } }
   mesh.position.y = 0.9;
@@ -101,7 +107,7 @@ function draw(p) {
     }
   }
   const a = back ? Math.PI + 0.6 : 0.5;
-  const d = close ? 1.7 : slogan ? 6.4 : 4.4;
+  const d = close ? 1.7 : slogan ? 6.4 : full ? 5.2 : 4.4;
   camera.position.set(Math.sin(a) * d, close ? 1.85 : 1.6, Math.cos(a) * d);
   camera.lookAt(0, close ? 1.7 : slogan ? 1.7 : 1.0, 0);
   renderer.render(scene, camera);
@@ -138,3 +144,10 @@ export function productPicture(p) {
   return img;
 }
 
+
+// A picture of a whole character in an outfit (start screen side cards). Cached by outfit.
+export function lookPicture(faction, look, slogan = '') {
+  const key = `look:${faction}:${JSON.stringify(look)}:${slogan}`;
+  if (!cache.has(key)) cache.set(key, drawLook(faction, look, { slogan, full: true }));
+  return cache.get(key);
+}

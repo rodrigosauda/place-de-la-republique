@@ -21,6 +21,7 @@ const N_CROWD_LOW = 110, N_CROWD_FULL = 200; // the full quality draws almost tw
 const LINE_COPS = 20;   // officers in the shield line
 const FIGHT_COPS = 36;  // officers brawling in the middle
 const FIGHTERS = 40;    // protesters brawling (paired with an officer)
+const FRONT_ROW = 14;   // protesters facing the police shield line
 const N_POLICE = LINE_COPS + FIGHT_COPS;
 const ROWS = 2;
 const KO_TIME = 4000;
@@ -29,7 +30,7 @@ const PANTS_COLORS = [0x3d5a80, 0x1f1f22, 0xb9a57f, 0x5f636b, 0x2f3b52];
 const SKIN = [0xf1d0b5, 0xe0b394, 0xc68e6a, 0xa26a45, 0x7a4b2e, 0x4e3020];
 const HAIR = [0x1c1714, 0x4a2f1d, 0x8a5a2b, 0xd9b26a, 0xa9a9a9, 0xb5401f];
 // The black bloc: black and grey clothes, hoods up (drawn as dark "hair").
-const BLOC_COLORS = [0x1d1d1f, 0x1d1d1f, 0x2b2c30, 0x3a3c42, 0x55585e];
+const BLOC_COLORS = [0x2a2b30, 0x2a2b30, 0x34363b, 0x40434a, 0x585b62]; // not pure black: they must stay visible at dusk
 const SIGN_COLORS = [0xc9a46b, 0xf4f1ea, 0xd6202d, 0xf7d417];
 
 // A tiny repeatable random generator (same numbers in every browser).
@@ -385,6 +386,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
 
   return {
     state,
+    get line() { return line; }, // for debugging / tests: where the police line stands now
     addGas,
     throwGas,
     gasClouds,
@@ -530,9 +532,20 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         a.visible = true;
         const ko = a.koUntil > now;
         let target;
+        const front = NC - 1 - i; // the last FRONT_ROW extras face the police shield line
         if (i < FIGHTERS) {
           const pr = pairs[i];
           target = { x: pr.g.x, z: pr.g.z, face: pr.psi, fight: true, down: pr.down === 'g', winner: pr.down === 'c', phi: pr.phi };
+        } else if (front < FRONT_ROW && line.active > 0.2) {
+          // Protesters pressing against the shields: a ragged row 2-4 m in front of the line, surging in and out,
+          // the first ones shoving (fight pose) so the officers in the line have someone to push back.
+          const r = seeded(i * 4111 + 3);
+          const off = -line.len / 2 + (front + 0.5) * (line.len / FRONT_ROW) + (r() - 0.5) * 0.8;
+          const dist = 2.0 + r() * 2.2 - 1.2 * Math.max(0, Math.sin(tReal * 0.9 + a.phase));
+          const lc = Math.cos(line.a), ls = Math.sin(line.a);
+          target = { x: line.x + lc * off + line.fx * dist, z: line.z + ls * off + line.fz * dist };
+          target.face = Math.atan2(-line.fx, -line.fz);
+          if (front % 3 === 0) { target.fight = true; target.phi = a.phase; }
         } else {
           // Around the brawl: shouting, surging in and out, waving placards.
           const r = seeded(i * 7919 + 13);

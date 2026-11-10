@@ -410,7 +410,7 @@ function addFace(head, id) {
       add(head, new THREE.CylinderGeometry(0.168, 0.168, 0.03, 12), mat(0x111111), 0, 0.03, 0, { shadow: false });
       break;
     case 'bandana': { // black bandana over nose and mouth, knotted at the back, a point under the chin
-      const cloth = mat(0x161618, { side: THREE.DoubleSide });
+      const cloth = mat(0x222327, { side: THREE.DoubleSide });
       add(head, new THREE.CylinderGeometry(0.172, 0.184, 0.13, 16, 1, true, -Math.PI * 0.62, Math.PI * 1.24), cloth, 0, -0.08, 0, { shadow: false });
       add(head, new THREE.ConeGeometry(0.1, 0.13, 3), cloth, 0, -0.19, 0.12, { rx: Math.PI, shadow: false }).scale.z = 0.35;
       break;

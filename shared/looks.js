@@ -36,7 +36,7 @@ export const HAIR_COLORS = ['#1c1714', '#4a2f1d', '#8a5a2b', '#d9b26a', '#b5401f
 
 export const TOPS = [
   { id: 'navy', label: 'Navy', color: '#22304f' },
-  { id: 'black', label: 'Black', color: '#1d1d1f' },
+  { id: 'black', label: 'Black', color: '#2a2b30' },
   { id: 'white', label: 'White', color: '#ecebe6' },
   { id: 'grey', label: 'Grey', color: '#7c8088' },
   { id: 'red', label: 'Red', color: '#b3262e' },
@@ -44,13 +44,13 @@ export const TOPS = [
   { id: 'denim', label: 'Denim', color: '#4b6e9c' },
   { id: 'mariniere', label: 'Breton stripes', color: '#ecebe6', stripes: '#22304f', premium: true, price: 100 },
   // Added later: new entries go at the END so saved outfits (stored as indexes) keep working.
-  { id: 'vest', label: 'Yellow vest', color: '#1d1d1f', vest: true, faction: 'g' }, // the classic gilet jaune, over a black top
+  { id: 'vest', label: 'Yellow vest', color: '#2a2b30', vest: true, faction: 'g' }, // the classic gilet jaune, over a black top
   { id: 'charcoal', label: 'Charcoal', color: '#33353a' },
 ];
 
 export const PANTS = [
   { id: 'jeans', label: 'Denim', color: '#3d5a80' },
-  { id: 'black', label: 'Black', color: '#1f1f22' },
+  { id: 'black', label: 'Black', color: '#2a2b30' },
   { id: 'beige', label: 'Beige', color: '#b9a57f' },
   { id: 'grey', label: 'Grey', color: '#5f636b' },
   { id: 'olive', label: 'Khaki', color: '#5b5e3a' },

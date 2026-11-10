@@ -328,7 +328,8 @@ export class GameRoom extends DurableObject {
       const speed = elapsed > 0 ? Math.hypot(p.x - t.x, p.z - t.z) / elapsed : 0;
       Object.assign(t, { x: p.x, y: p.y, z: p.z, r: p.r, lastMove: now });
       if (speed > 0.3 || t.sp) this.truckActive = now; // for the AFK check
-      if (TRUCK_KNOCKDOWN && speed > TRUCK_HIT_SPEED && speed < 40) this.truckHits(p, speed, now);
+      // Any movement shoves people out of the way (players, NPCs: everyone the same), so it never drives through anyone.
+      if (TRUCK_KNOCKDOWN && speed > 0.4 && speed < 40) this.truckHits(p, speed, now);
     } else if (this.truck.o !== p.id) {
       if (!this.truck.o) this.truck.lastMove = 0;
     }
@@ -745,8 +746,9 @@ export class GameRoom extends DurableObject {
       if (p.id === t.o || p.id === t.g || p.v) continue;
       const dist = inJet(p.x, p.z);
       if (!dist) continue;
-      if (p.b && p.f === 'c' && facing(p, t.x, t.z)) continue; // the CRS shield blocks water
-      const strength = SPRAY_PUSH_SPEED * (1 - (dist / SPRAY_RANGE) * 0.4); // weaker far away
+      // Everyone in the jet is pushed (a raised police shield only softens it).
+      const shield = p.b && p.f === 'c' && facing(p, t.x, t.z) ? 0.4 : 1;
+      const strength = SPRAY_PUSH_SPEED * (1 - (dist / SPRAY_RANGE) * 0.4) * shield; // weaker far away
       if (p.npc) { p.kx = fx * strength; p.kz = fz * strength; }
       else this.send(this.sockets.get(p.id), { t: MSG.PUSH, k: [round2(fx * strength), round2(fz * strength)] });
     }
@@ -1089,7 +1091,7 @@ export class GameRoom extends DurableObject {
     let rammed = 0;
     for (const target of this.targets()) {
       if (target === driver || target.v || target.hp <= 0) continue;
-      if (now - (target.th || 0) < 700) continue;   // already shoved a moment ago
+      if (now - (target.th || 0) < 450) continue;   // already shoved a moment ago
       const dx = target.x - t.x, dz = target.z - t.z;
       const along = dx * fx + dz * fz;               // in front (+) / behind (-)
       const side = dx * rx + dz * rz;
@@ -1097,7 +1099,7 @@ export class GameRoom extends DurableObject {
       if (Math.abs(along) > 3 + 1 || Math.abs(side) > 1.2 + 1) continue;
       target.th = now;
       const sideSign = side >= 0 ? 1 : -1;
-      const push = clamp(speed * 0.9, 3, 9);
+      const push = clamp(3 + speed * 0.7, 4, 10);       // even a crawling truck moves you out of the way
       const kx = rx * sideSign * push + fx * push * 0.4, kz = rz * sideSign * push + fz * push * 0.4;
       if (target.npc) { target.kx = kx; target.kz = kz; }
       else this.send(this.sockets.get(target.id), { t: MSG.PUSH, k: [round2(kx), round2(kz)], s: 1 });

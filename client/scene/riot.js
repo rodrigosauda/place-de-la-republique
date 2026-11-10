@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { gameMinutes, GAS_RADIUS, GAS_DURATION_MS, GAS_PICKUP_MS, GAS_PICKUP_RANGE, inSafeZone, PLAZA } from '../../shared/constants.js';
+import { SPRAY_RANGE, SPRAY_HALF_ANGLE, SPRAY_PUSH_SPEED } from '../../shared/constants.js';
 import { phaseAt, policeLine, linePhase, meleeCenters, MELEE_RADIUS, FIGHT_SPOTS, fighterPlan, pickSpot, spotHeat } from '../../shared/timeline.js';
 
 const N_CROWD_LOW = 110, N_CROWD_FULL = 200; // the full quality draws almost twice as many extras (each part is one instanced mesh)
@@ -400,8 +401,19 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
 
   // The truck (set every frame by main.js): anyone inside its footprint is pushed out to the nearest side.
   let truckInfo = null;
+  let frameDt = 0;
   function shoveFromTruck(a) {
     const t = truckInfo;
+    // The water jet pushes everyone in it, like it pushes the players (shared/constants.js SPRAY_*).
+    if (t.spray) {
+      const wx = a.x - t.tx, wz = a.z - t.tz, wd = Math.hypot(wx, wz);
+      const ax = Math.sin(t.aim), az = Math.cos(t.aim);
+      if (wd > 0.01 && wd < SPRAY_RANGE && (wx * ax + wz * az) / wd >= Math.cos(SPRAY_HALF_ANGLE)) {
+        const push = SPRAY_PUSH_SPEED * (1 - (wd / SPRAY_RANGE) * 0.4) * frameDt;
+        a.x += ax * push; a.z += az * push;
+        a.moving = 1.6; // stumbling backwards in the water
+      }
+    }
     const dx = a.x - t.x, dz = a.z - t.z;
     if (Math.abs(dx) > 5 || Math.abs(dz) > 5) return;
     const fx = Math.sin(t.yaw), fz = Math.cos(t.yaw), rx = -fz, rz = fx;
@@ -649,6 +661,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         count++; cx += a.x; cz += a.z;
       }
       // The water cannon shoves the extras aside (they are never "ghosts" it drives through).
+      frameDt = dt;
       if (truckInfo) for (let i = 0; i < NC; i++) shoveFromTruck(crowd[i]);
       // Keep apart from each other and from players (step aside instead of walking through).
       for (let i = 0; i < NC; i++) {

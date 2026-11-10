@@ -165,7 +165,7 @@ export const TRUCK_KNOCKDOWN = true;
 export const TRUCK_HIT_SPEED = 4;       // m/s (~15 km/h)
 export const TRUCK_HIT_LAUNCH = 12;     // m/s how hard people fly away
 export const TRUCK_RAM_SPEED = 7;       // m/s: shoving protesters faster than this costs the police public opinion
-export const TRUCK_STALL_CROWD = 3;     // this many protesters around the truck stop it (NPCs count half)
+export const TRUCK_STALL_CROWD = 6;     // this many protesters around the truck stop it (NPCs count half)
 export const TRUCK_STALL_SPEED = 1;     // m/s: how fast a stopped truck can still creep
 export const TRUCK_PAINT_MS = 4000;     // paint on the windscreen blurs the driver's view this long
 

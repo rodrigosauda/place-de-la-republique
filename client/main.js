@@ -748,7 +748,8 @@ async function start() {
       const tp = truck.position, lt = truck._lastRiot;
       const sp = seat === 'driver' ? truck.speed : lt && dt > 0 ? Math.hypot(tp.x - lt.x, tp.z - lt.z) / dt : 0;
       truck._lastRiot = { x: tp.x, z: tp.z };
-      riot.setTruck({ x: tp.x, z: tp.z, yaw: truck.yaw, speed: sp });
+      const tip = truck.barrelTip(tmp);
+      riot.setTruck({ x: tp.x, z: tp.z, yaw: truck.yaw, speed: sp, spray: truck.spraying, aim: truck.aim, tx: tip.x, tz: tip.z });
     }
     riot.update(dt, local?.faction, dayNight.daylight ?? 1, others);
     paintOverlay.style.opacity = local?.inVehicle && seat === 'driver' && truck.painted ? '1' : '0';

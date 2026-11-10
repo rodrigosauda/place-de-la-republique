@@ -15,12 +15,12 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { gameMinutes, GAS_RADIUS, GAS_DURATION_MS, GAS_PICKUP_MS, GAS_PICKUP_RANGE, inSafeZone, PLAZA } from '../../shared/constants.js';
-import { phaseAt, policeLine, linePhase, meleeCenters, MELEE_RADIUS } from '../../shared/timeline.js';
+import { phaseAt, policeLine, linePhase, meleeCenters, MELEE_RADIUS, FIGHT_SPOTS, fighterPlan, pickSpot, spotHeat } from '../../shared/timeline.js';
 
 const N_CROWD_LOW = 110, N_CROWD_FULL = 200; // the full quality draws almost twice as many extras (each part is one instanced mesh)
 const LINE_COPS = 20;   // officers in the shield line
 const FIGHT_COPS = 36;  // officers brawling in the middle
-const FIGHTERS = 40;    // protesters brawling (paired with an officer)
+const FIGHTERS = 36;    // protesters brawling (each paired with one officer)
 const FRONT_ROW = 14;   // protesters facing the police shield line
 const N_POLICE = LINE_COPS + FIGHT_COPS;
 const ROWS = 2;
@@ -217,6 +217,20 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
     C.legR.setColorAt(i, color.set(pants));
     C.sign.setColorAt(i, color.set(SIGN_COLORS[Math.floor(r() * SIGN_COLORS.length)]));
   }
+
+  // Fight circles: a faint scuffed ring on the ground at each fight spot, stronger when the fight is hot.
+  const spotRings = FIGHT_SPOTS.map((S, k) => {
+    if (S.ring) return null;
+    const m = new THREE.Mesh(
+      new THREE.RingGeometry(S.r + 3, S.r + 3.6, 48),
+      new THREE.MeshBasicMaterial({ color: 0xff5a3a, transparent: true, opacity: 0, depthWrite: false }),
+    );
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(S.x, 0.05, S.z);
+    m.userData.noMerge = true;
+    scene.add(m);
+    return [m, k];
+  }).filter(Boolean);
 
   // ------------------------------------------------------- riot police
   const navy = mat(0x15181f);
@@ -429,14 +443,20 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
       return best;
     },
     // The crowd hit a police player at (x, z): the nearest extra throws a punch.
+    // The nearest one rushes in (if not already next to you), so you always SEE who hit you.
     crowdSwing(x, z) {
-      let best = null, bd = 6;
+      let best = null, bd = 14;
       for (const a of crowd) {
         if (!a.visible || a.koUntil > Date.now()) continue;
         const d = Math.hypot(a.x - x, a.z - z);
         if (d < bd) { bd = d; best = a; }
       }
-      if (best) { best.punchT = 0; best.rot = Math.atan2(x - best.x, z - best.z); }
+      if (!best) return;
+      const d = Math.max(bd, 0.01);
+      best.lunge = { x: x + ((best.x - x) / d) * 0.9, z: z + ((best.z - z) / d) * 0.9, fx: x, fz: z, until: Date.now() + 2500 };
+      if (bd > 4) { best.x = x + ((best.x - x) / d) * 3.5; best.z = z + ((best.z - z) / d) * 3.5; } // came running out of the crowd
+      best.punchT = 0;
+      best.rot = Math.atan2(x - best.x, z - best.z);
     },
 
     // An extra was hit (by anyone, relayed by the server): they fall over for a few seconds.
@@ -487,7 +507,8 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
 
       // ---- the brawl: who wants to be where right now (worked out from the clock,
       //      so every player sees the same fights)
-      const CENTERS = meleeCenters(tReal); // 0 = around the statue, 1 = east, 2 = west
+      const CENTERS = meleeCenters(tReal); // 0 = around the statue, then the two hottest fight spots
+      for (const [m, k] of spotRings) m.material.opacity = Math.max(0, spotHeat(k, tReal) - 0.3) * 0.5;
       const inPlazaClamp = (p) => {
         p.x = Math.max(PLAZA.minX + 2, Math.min(PLAZA.maxX - 2, p.x));
         p.z = Math.max(PLAZA.minZ + 2, Math.min(PLAZA.maxZ - 2, p.z));
@@ -495,33 +516,44 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         if (d < 10.5) { const k = 10.5 / (d || 1); p.x *= k; p.z *= k; } // around the monument, not through it
         return p;
       };
-      // Pair j: protester j fights officer LINE_COPS + (j % FIGHT_COPS).
+      // Pair j: protester j fights officer LINE_COPS + j. Groups of 4 pairs walk in together (the protesters
+      // from a street near their fight spot, the officers from the police side), fight, and walk out again
+      // (shared/timeline.js -> fighterPlan). Nobody sprints across the square from one fight to another.
       const pairs = [];
+      const lerpP = (A, B, u) => ({ x: A.x + (B.x - A.x) * u, z: A.z + (B.z - A.z) * u });
       for (let j = 0; j < FIGHTERS; j++) {
         const r = seeded(j * 977 + 5);
         const phi = r() * 6.28, phi2 = r() * 6.28, spin = (r() < 0.5 ? -1 : 1) * (0.25 + r() * 0.35);
-        const H = CENTERS[j % 3];
+        const plan = fighterPlan(j, tReal);
+        const H = FIGHT_SPOTS[plan.spot];
         const drift = (r() - 0.5) * (H.ring ? 0.12 : 0.06);
         const theta = r() * 6.28 + tReal * drift + 0.6 * Math.sin(tReal * 0.13 + phi);
-        // Around the statue: on a ring 11-20 m from its centre. Elsewhere: anywhere in the fight.
-        const R = H.ring ? 11.5 + r() * 8 + 1.5 * Math.sin(tReal * 0.2 + phi2) : 2 + r() * MELEE_RADIUS + 2 * Math.sin(tReal * 0.2 + phi2);
-        let ax = H.x + Math.cos(theta) * R, az = H.z + Math.sin(theta) * R * (H.ring ? 0.95 : 0.8);
-        // Every ~25 s a pair breaks into a chase: they run off ~10 m and come back.
-        const period = 25, slot = Math.floor((tReal + phi * 4) / period), u = ((tReal + phi * 4) % period) / 5;
-        if (u < 1) {
-          const rr = seeded(j * 131 + slot);
-          const dir = rr() * 6.28;
-          const run = Math.sin(Math.PI * u) * 10;
-          ax += Math.cos(dir) * run; az += Math.sin(dir) * run;
-        }
+        // Around the statue: on a ring 11-20 m from its centre. Elsewhere: inside the circle of that spot.
+        const R = H.ring ? 11.5 + r() * 8 + 1.5 * Math.sin(tReal * 0.2 + phi2) : 1 + r() * H.r + 1.5 * Math.sin(tReal * 0.2 + phi2);
+        const ax = H.x + Math.cos(theta) * R, az = H.z + Math.sin(theta) * R * (H.ring ? 0.95 : 0.8);
         const psi = phi + tReal * spin;                        // they circle each other
         const gap = 1.15 + 0.4 * Math.sin(tReal * 2.3 + phi);  // lunging in and out
-        const P0 = inPlazaClamp({ x: ax - Math.sin(psi) * gap / 2, z: az - Math.cos(psi) * gap / 2 });
-        const P1 = inPlazaClamp({ x: ax + Math.sin(psi) * gap / 2, z: az + Math.cos(psi) * gap / 2 });
-        // Knock-downs: in some 20 s slots one of the two goes down for 4 s.
-        const ks = Math.floor(tReal / 20), kr = seeded(j * 7349 + ks), roll = kr(), when = kr() * 14, inSlot = tReal - ks * 20;
-        const down = inSlot > when && inSlot < when + 4 ? (roll < 0.22 ? 'g' : roll < 0.4 ? 'c' : null) : null;
-        pairs.push({ g: P0, c: P1, psi, phi, down });
+        let P0 = inPlazaClamp({ x: ax - Math.sin(psi) * gap / 2, z: az - Math.cos(psi) * gap / 2 });
+        let P1 = inPlazaClamp({ x: ax + Math.sin(psi) * gap / 2, z: az + Math.cos(psi) * gap / 2 });
+        let down = null;
+        // Walking in / out: a little column, each one a metre to the side of the one before.
+        const side = (plan.member - 1.5) * 1.1;
+        const shift = (A, B) => { const dx = B.x - A.x, dz = B.z - A.z, d = Math.hypot(dx, dz) || 1; return { x: A.x - (dz / d) * side, z: A.z + (dx / d) * side }; };
+        const ease = (u) => u * u * (3 - 2 * u);
+        if (plan.stage === 'in') {
+          P0 = lerpP(shift(plan.from.g, P0), P0, ease(plan.u));
+          P1 = lerpP(shift(plan.from.c, P1), P1, ease(plan.u));
+        } else if (plan.stage === 'out') {
+          P0 = lerpP(P0, shift(P0, plan.to), ease(plan.u));
+          P1 = lerpP(P1, shift(P1, plan.from.c), ease(plan.u));
+        } else if (plan.stage === 'away') {
+          P0 = shift(plan.from.g, H); P1 = shift(plan.from.c, H);
+        } else {
+          // Knock-downs: in some 20 s slots one of the two goes down for 4 s.
+          const ks = Math.floor(tReal / 20), kr = seeded(j * 7349 + ks), roll = kr(), when = kr() * 14, inSlot = tReal - ks * 20;
+          down = inSlot > when && inSlot < when + 4 ? (roll < 0.22 ? 'g' : roll < 0.4 ? 'c' : null) : null;
+        }
+        pairs.push({ g: P0, c: P1, psi, phi, down, stage: plan.stage });
       }
 
       // ---- crowd: steer towards those spots, keep apart, animate
@@ -533,9 +565,12 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         const ko = a.koUntil > now;
         let target;
         const front = NC - 1 - i; // the last FRONT_ROW extras face the police shield line
+        a.hidden = false;
         if (i < FIGHTERS) {
           const pr = pairs[i];
-          target = { x: pr.g.x, z: pr.g.z, face: pr.psi, fight: true, down: pr.down === 'g', winner: pr.down === 'c', phi: pr.phi };
+          const fighting = pr.stage === 'fight';
+          target = { x: pr.g.x, z: pr.g.z, face: fighting ? pr.psi : Math.atan2(pr.g.x - a.x, pr.g.z - a.z), fight: fighting, down: pr.down === 'g', winner: pr.down === 'c', phi: pr.phi };
+          if (pr.stage === 'away') { a.hidden = true; a.x = pr.g.x; a.z = pr.g.z; }
         } else if (front < FRONT_ROW && line.active > 0.2) {
           // Protesters pressing against the shields: a ragged row 2-4 m in front of the line, surging in and out,
           // the first ones shoving (fight pose) so the officers in the line have someone to push back.
@@ -550,8 +585,11 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
           // Around the brawl: shouting, surging in and out, waving placards.
           const r = seeded(i * 7919 + 13);
           const ang = r() * 6.28 + tReal * (r() - 0.5) * 0.05;
-          const H = CENTERS[i % 3];
-          const rad = (H.ring ? 21 : MELEE_RADIUS + 3) + r() * 7 - 3 * Math.max(0, Math.sin(tReal * 0.6 + a.phase));
+          // Each onlooker watches one fight spot for a few minutes, then strolls to another one
+          // (everyone at their own moment, so the crowd never moves as one block).
+          const per = 260 + r() * 200, off = r() * per, cyc = Math.floor((tReal + off) / per);
+          const H = FIGHT_SPOTS[pickSpot(cyc * per - off, seeded(i * 131 + cyc * 7)())];
+          const rad = (H.ring ? 21 : H.r + 5) + r() * 7 - 3 * Math.max(0, Math.sin(tReal * 0.6 + a.phase));
           target = inPlazaClamp({ x: H.x + Math.cos(ang) * rad, z: H.z + Math.sin(ang) * rad * (H.ring ? 0.95 : 0.8) });
           target.face = Math.atan2(H.x - target.x, H.z - target.z);
           // The second banner carrier walks 2.3 m beside the first one, so the banner stays stretched between them.
@@ -561,6 +599,10 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
             target = inPlazaClamp({ x: T.x + Math.cos(f) * 2.3, z: T.z - Math.sin(f) * 2.3 });
             target.face = f;
           }
+        }
+        a.visible = !a.hidden;
+        if (a.lunge && now < a.lunge.until && !ko) {
+          target = { x: a.lunge.x, z: a.lunge.z, face: Math.atan2(a.lunge.fx - a.lunge.x, a.lunge.fz - a.lunge.z), fight: true, phi: a.phase };
         }
         if (firstFrame) { a.x = target.x; a.z = target.z; }
         if (ko) {
@@ -573,7 +615,8 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
           let step = 0;
           if (dist > 0.08) {
             // Walk when close, run when far (max ~6.5 m/s), never teleport.
-            const speed = Math.min(6.5, 0.6 + dist * 2.2) * (a.speed / 1.4);
+            // Walk when close, jog when far (max ~6.5 m/s in a fight, ~3 m/s otherwise), never teleport.
+            const speed = Math.min(target.fight ? 6.5 : 3, 0.6 + dist * 2.2) * (a.speed / 1.4);
             step = Math.min(dist, speed * dt);
             a.x += (dx / dist) * step; a.z += (dz / dist) * step;
           }
@@ -619,6 +662,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
       for (let i = 0; i < NC; i++) {
         const a = crowd[i];
         const tg = a.target;
+        if (a.hidden) { for (const k in C) C[k].setMatrixAt(i, HIDDEN); continue; } // out of sight in a street
         const ko = a.koUntil > now || tg.down;
         const swing = Math.sin(a.stride) * 0.55 * Math.min(1, a.moving);
         const bob = Math.abs(Math.cos(a.stride)) * 0.06 * Math.min(1, a.moving);
@@ -731,8 +775,11 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         } else {
           // Brawling: opposite the protester of pair (i - LINE_COPS).
           const pr = pairs[i - LINE_COPS];
-          tx = pr.c.x; tz = pr.c.z; face = pr.psi + Math.PI;
-          fight = pr;
+          tx = pr.c.x; tz = pr.c.z;
+          if (pr.stage === 'fight') { face = pr.psi + Math.PI; fight = pr; }
+          else face = Math.atan2(tx - c.x, tz - c.z);
+          c.hidden = pr.stage === 'away';
+          if (c.hidden) { c.x = tx; c.z = tz; }
           c.inLine = false;
         }
         if (firstFrame) { c.x = tx; c.z = tz; }
@@ -740,7 +787,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         const dx = tx - c.x, dz = tz - c.z, dist = Math.hypot(dx, dz);
         let step = 0;
         if (!ko && dist > 0.08) {
-          const speed = Math.min(6, 0.6 + dist * 2.2);
+          const speed = Math.min(fight ? 6 : 3.5, 0.6 + dist * 2.2);
           step = Math.min(dist, speed * dt);
           c.x += (dx / dist) * step; c.z += (dz / dist) * step;
         }
@@ -759,6 +806,8 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
           batonArm = t < 0.4 ? -0.35 - (t / 0.4) * 2.4 : -2.75 + ((t - 0.4) / 0.6) * 2.4;
           if (t >= 1) c.swingT = -1;
         }
+        c.visible = !c.hidden;
+        if (c.hidden) { for (const k in P) P[k].setMatrixAt(i, HIDDEN); continue; } // out of sight in a street
         const swing = Math.sin(c.stride) * 0.5 * Math.min(1, c.moving);
         const stomp = c.inLine && phase.id === 'clashes' && c.moving < 0.2 ? Math.max(0, Math.sin(tReal * 2 + c.phase)) * 0.04 : 0;
         base.compose(v.set(c.x, ko ? 0.22 : stomp, c.z), q.setFromEuler(e.set(ko ? -Math.PI / 2 : c.moving > 1 ? 0.2 : 0, c.rot, 0, 'YXZ')), one.set(1.08, 1.02, 1.08));

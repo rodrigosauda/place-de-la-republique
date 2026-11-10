@@ -22,7 +22,9 @@ export class CharacterFx {
     this.swingT = -1;      // < 0 = not swinging
     this.flashT = 0;
     this.ko = false;
-    this.koBlend = 0;      // 0 = standing, 1 = lying flat
+    this.koBlend = 0;      // 0 = standing, 1 = lying on the ground
+    this.koT = 0;          // seconds since the K.O. (the fall is a short animation, not a slide)
+    this.koSide = 1;       // which side you fall to (+1 / -1)
     this.blocking = false;
     this.blockBlend = 0;
     this.carrying = false;
@@ -51,6 +53,7 @@ export class CharacterFx {
   flash() { this.flashT = FLASH_TIME; }
 
   setKO(ko) {
+    if (ko && !this.ko) { this.koT = 0; this.koSide = Math.random() < 0.5 ? -1 : 1; }
     this.ko = ko;
     this.parts.stars.visible = ko;
     if (ko) this.emote = -1;
@@ -89,14 +92,22 @@ export class CharacterFx {
     // --- walk cycle ----------------------------------------------------------
     // Legs move in step with the ground covered (one full stride ≈ 2.2 m), so feet don't slide.
     const moving = Math.min(speed / 2, 1);
+    const running = speed > 7.5;
     this.walkPhase += dt * speed * 2.85 * (p.old ? 1.2 : 1);
-    const stride = Math.sin(this.walkPhase) * (speed > 7.5 ? 0.85 : 0.65) * moving * (p.old ? 0.6 : 1);
+    const s = Math.sin(this.walkPhase);
+    const stride = s * (running ? 0.75 : 0.5) * moving * (p.old ? 0.6 : 1);
 
     // Target angles: [rightArm.x, rightArm.z, leftArm.x, leftArm.z, legR.x, legL.x]
-    let ra = ARM_REST - stride * 0.6, raz = 0;
-    let la = ARM_REST + stride * 0.6, laz = 0;
+    // Arms swing opposite to the legs, a bit away from the body; running pumps them (bent forward).
+    const armSwing = running ? 0.9 : 0.45;
+    let ra = ARM_REST - stride * armSwing - (running ? 0.35 : 0), raz = 0.07;
+    let la = ARM_REST + stride * armSwing - (running ? 0.35 : 0), laz = -0.07;
     let lr = stride, ll = -stride;
     let poseY = 0, poseYaw = 0;
+    // A little bounce on every step, a lean forward when running, the shoulders turning with the steps.
+    const bob = Math.abs(Math.cos(this.walkPhase)) * (running ? 0.06 : 0.035) * moving;
+    const lean = (running ? 0.16 : 0.05) * moving;
+    const twist = s * (running ? 0.12 : 0.08) * moving;
 
     if (p.placard && !this.carrying) la = -2.9;                 // sign held high
     if (this.blocking && !this.ko) {
@@ -126,6 +137,23 @@ export class CharacterFx {
       default:
     }
 
+    // --- KO: stagger, fall over sideways (like gravity, with a small bounce), lie limp ----
+    // Getting up again is a quick push back up.
+    if (this.ko) {
+      this.koT += dt;
+      const t = this.koT;
+      // 0-0.18 s stagger back; 0.18-0.55 s fall (accelerating); then a bounce and rest.
+      if (t < 0.18) this.koBlend = 0.08 * (t / 0.18);
+      else if (t < 0.55) { const u = (t - 0.18) / 0.37; this.koBlend = 0.08 + 0.92 * u * u; }
+      else if (t < 0.75) this.koBlend = 1 - Math.sin(((t - 0.55) / 0.2) * Math.PI) * 0.06;
+      else this.koBlend = 1;
+      // Limp arms and legs while down.
+      if (t > 0.18) { ra = -0.4; raz = 0.9; la = -0.2; laz = -1.1; lr = 0.25; ll = -0.35; }
+      else { ra = -2.4; la = -2.4; raz = 0.5; laz = -0.5; } // arms fly up as you get hit
+    } else {
+      this.koBlend += (0 - this.koBlend) * (1 - Math.exp(-7 * dt));
+    }
+
     // --- weapon swing (right arm): wind up over the head, smash, come back -----
     if (this.swingT >= 0) {
       this.swingT += dt;
@@ -151,13 +179,14 @@ export class CharacterFx {
       p.bodyMaterial.emissive.setRGB(Math.max(0, this.flashT / FLASH_TIME) * 0.9, 0, 0);
     }
 
-    // --- KO: fall on your back, stars spin above your head --------------------
-    this.koBlend += ((this.ko ? 1 : 0) - this.koBlend) * (1 - Math.exp(-10 * dt));
-    p.pose.rotation.x = (-Math.PI / 2) * this.koBlend;
+    const kb = this.koBlend, standing = 1 - kb;
+    p.pose.rotation.z = this.koSide * (Math.PI / 2) * kb;
+    p.pose.rotation.x = lean * standing - 0.15 * kb;
     p.pose.rotation.y += (poseYaw - p.pose.rotation.y) * k;
-    p.pose.position.y = -0.5 * this.koBlend + poseY * (1 - this.koBlend);
+    p.pose.position.y = -0.72 * kb + (poseY + bob) * standing;
+    if (p.torso) p.torso.rotation.y = twist * standing;
     if (p.stars.visible) {
-      p.stars.position.set(0, -0.2, -0.9);
+      p.stars.position.set(-this.koSide * 0.85, -0.45, 0);
       p.stars.rotation.y += dt * 4;
     }
 

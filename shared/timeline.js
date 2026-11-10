@@ -282,16 +282,76 @@ export function crowdLevel(minutes) {
   return p.crowd + (next.crowd - p.crowd) * t;
 }
 
-// The brawl: it NEVER stops (day and night). Three fights that move slowly:
-//   0 = all around the statue, 1 = east of it, 2 = west of it
-// (the open middle of the square; the tree rows are at both ends).
-// Every browser and the server compute the same spots from the clock.
+// The brawl: it NEVER stops (day and night). It happens in FIGHT SPOTS ("circles") that flare up
+// and die down. People don't run across the square from one fight to the next: groups of
+// protesters walk in from a street, the police send a squad from their side, they fight for a
+// few minutes and leave by a street again (see fighterPlan). Every browser and the server work
+// out the same spots from the clock.
 export const MELEE_RADIUS = 12;
+export const FIGHT_SPOTS = [
+  { x: 0, z: 0, ring: true, r: 9 },  // all around the statue: always busy
+  { x: 62, z: -10, r: 9 },            // east part of the square
+  { x: -62, z: -16, r: 9 },           // west part
+  { x: 24, z: -30, r: 8 },            // north side
+  { x: -24, z: 8, r: 8 },             // south side
+];
+// Streets around the square (points ~30 m into each street): where groups come from and go to.
+export const STREETS = [
+  { x: 144, z: -6 }, { x: 110, z: 35 }, { x: 59, z: 45 }, { x: -10, z: 52 },
+  { x: -96, z: 35 }, { x: -133, z: -42 }, { x: 18, z: -74 }, { x: 130, z: -55 },
+];
+// Where police squads come from: the barracks (north side) and the streets behind the police lines.
+export const POLICE_STREETS = [{ x: -27.5, z: -58 }, { x: 18, z: -74 }, { x: 130, z: -55 }, { x: -133, z: -42 }];
+
+// How hot each spot is right now, 0..1 (the statue is always fairly busy).
+export function spotHeat(k, tSec) {
+  if (k === 0) return 0.7;
+  return 0.5 + 0.5 * Math.sin(tSec / (150 + 37 * k) + k * 2.1);
+}
+const near = (list, p, n) => [...list].sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)).slice(0, n);
+function rng(seed) {
+  let s = seed >>> 0;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+}
+// Pick a spot, more often the hot ones.
+export function pickSpot(tSec, r) {
+  const w = FIGHT_SPOTS.map((_, k) => 0.1 + spotHeat(k, tSec) ** 2);
+  let x = r * w.reduce((a, b) => a + b, 0);
+  for (let k = 0; k < w.length; k++) { x -= w[k]; if (x <= 0) return k; }
+  return 0;
+}
+
+// Fighter pair j (one protester + one officer) over time. Pairs come in groups of 4 that arrive together:
+//   'in'    walking in, the protesters from a street near the spot, the officers from the police side
+//   'fight' brawling at the spot
+//   'out'   walking away to a street
+//   'away'  gone for a moment (out of sight in the street)
+// Returns { stage, spot, u (0..1 progress of in/out), from: {g, c}, to: exit, member }.
+export function fighterPlan(j, tSec) {
+  const group = Math.floor(j / 4), member = j % 4;
+  const P = 300 + (group % 5) * 40;                      // seconds per visit
+  const off = rng(group * 2654435761 + 17)() * P;
+  const cycle = Math.floor((tSec + off) / P), local = (tSec + off) % P;
+  const r = rng(group * 7919 + cycle * 104729 + 3);
+  const spot = pickSpot(tSec - local, r());
+  const S = FIGHT_SPOTS[spot];
+  const g = near(STREETS, S, 2)[Math.floor(r() * 2)];
+  const c = near(POLICE_STREETS, S, 2)[Math.floor(r() * 2)];
+  const exit = near(STREETS, S, 3)[Math.floor(r() * 3)];
+  const start = member * 1.5;                             // a little column, one after the other
+  const IN = 45, OUT = 35, AWAY = 8;
+  let stage, u = 0;
+  if (local < start) { stage = 'away'; }
+  else if (local < start + IN) { stage = 'in'; u = (local - start) / IN; }
+  else if (local < P - OUT - AWAY) { stage = 'fight'; }
+  else if (local < P - AWAY) { stage = 'out'; u = (local - (P - OUT - AWAY)) / OUT; }
+  else stage = 'away';
+  return { stage, spot, u, from: { g, c }, to: exit, member, group };
+}
+
+// The three busiest places right now (the statue + the two hottest spots); used by the server NPCs.
 export function meleeCenters(tSec = Date.now() / 1000) {
-  return [
-    { x: 0, z: 0, ring: true },                                                         // around the monument
-    { x: 27 + Math.sin(tSec / 70) * 9, z: -12 + Math.sin(tSec / 50 + 1) * 13 },          // east
-    { x: -26 + Math.sin(tSec / 64 + 2) * 9, z: -12 + Math.sin(tSec / 57 + 3) * 13 },     // west
-  ];
+  const order = FIGHT_SPOTS.map((s, k) => [k, spotHeat(k, tSec)]).filter(([k]) => k > 0).sort((a, b) => b[1] - a[1]);
+  return [FIGHT_SPOTS[0], FIGHT_SPOTS[order[0][0]], FIGHT_SPOTS[order[1][0]]];
 }
 export const meleeCenter = (tSec) => meleeCenters(tSec)[1 + (Math.floor((tSec ?? Date.now() / 1000) / 30) % 2)];

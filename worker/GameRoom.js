@@ -968,7 +968,8 @@ export class GameRoom extends DurableObject {
         this.damage(t, { ...LINE, x: L.x, z: L.z }, 1, L.fx * 7, L.fz * 7, now);
       } else if (t.f === 'c' && !t.npc && phase === 'clashes') {
         // A police player who charges alone into the crowd in front of the line gets mobbed.
-        if (Math.abs(along) > L.len / 2 + 4 || front < 2.5 || front > 14) continue;
+        // Only where the crowd really stands (the row 2-4 m in front of the shields, see client/scene/riot.js).
+        if (Math.abs(along) > L.len / 2 + 1 || front < 1.2 || front > 6) continue;
         if (now - (t.xh || 0) < CROWD_HIT_COOLDOWN) continue;
         t.xh = now;
         this.broadcast({ t: MSG.SWING, id: 'X', p: [round2(t.x + L.fx), round2(t.z + L.fz)] });

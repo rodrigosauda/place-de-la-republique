@@ -32,14 +32,15 @@ export class WaterSpray {
     // 1) Emit new drops from the barrel tip.
     if (on) {
       this.toEmit += DROPS_PER_SECOND * dt;
-      const fx = Math.sin(truck.yaw);
-      const fz = Math.cos(truck.yaw);
-      const p = truck.position;
+      const fx = Math.sin(truck.aim);
+      const fz = Math.cos(truck.aim);
+      const tip = truck.barrelTip(this.tmpPos);
+      const p = { x: tip.x, y: tip.y, z: tip.z };
       while (this.toEmit >= 1 && this.drops.length < MAX_DROPS) {
         this.toEmit -= 1;
         const spread = 0.12;
         this.drops.push({
-          x: p.x + fx * 2.2, y: p.y + 2.0, z: p.z + fz * 2.2,
+          x: p.x, y: p.y, z: p.z,
           vx: (fx + (Math.random() - 0.5) * spread) * SPEED,
           vy: 1.5 + Math.random() * 1.5,
           vz: (fz + (Math.random() - 0.5) * spread) * SPEED,

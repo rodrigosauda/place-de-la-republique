@@ -25,7 +25,7 @@ import {
   MAX_SLOGAN_LENGTH, MAX_CHAT_LENGTH, CHAT_COOLDOWN_MS, MAX_MESSAGES_PER_SECOND,
   MAX_MESSAGE_BYTES, MAX_HP, KO_MS, FRIENDLY_FIRE, WEAPONS, DEFAULT_WEAPON,
   SPRAY_RANGE, SPRAY_HALF_ANGLE, SPRAY_PUSH_SPEED, SPRAY_PROP_SPEED,
-  TRUCK_KNOCKDOWN, TRUCK_HIT_SPEED, TRUCK_HIT_LAUNCH,
+  TRUCK_KNOCKDOWN, TRUCK_HIT_SPEED, TRUCK_HIT_LAUNCH, TRUCK_RAM_SPEED, TRUCK_STALL_CROWD, TRUCK_PAINT_MS,
   WATER_MAX, WATER_USE_PER_SEC, WATER_REFILL_PER_SEC, PROPS, PROP_PUSH_RANGE,
   GRAB_RANGE, THROW_SPEED, THROW_HIT_RADIUS, THROW_KNOCK,
   NPC_MAX, NPC_MIN_CROWD, NPC_SPEED, NPC_CHANT_CHANCE, EMOTES, EMOTE_LIST, TAGS_PER_DAY, MAX_TAGS, TAG_RANGE,
@@ -91,7 +91,7 @@ export class GameRoom extends DurableObject {
     this.lastAmbientGas = 0;
 
     // Truck. o = owner id (0 = nobody), sp = spraying (0/1), w = water left.
-    this.truck = { x: TRUCK_SPAWN.x, y: TRUCK_SPAWN.y, z: TRUCK_SPAWN.z, r: TRUCK_SPAWN.r, o: 0, sp: 0, w: WATER_MAX };
+    this.truck = { x: TRUCK_SPAWN.x, y: TRUCK_SPAWN.y, z: TRUCK_SPAWN.z, r: TRUCK_SPAWN.r, o: 0, g: 0, a: TRUCK_SPAWN.r, sp: 0, w: WATER_MAX, st: 0, pt: 0 };
 
     // Street props: current [x, z] of each one in shared PROPS.
     this.props = PROPS.map((p) => [p.x, p.z]);
@@ -134,7 +134,7 @@ export class GameRoom extends DurableObject {
       const sameDay = saved.get('score')?.day === this.score.day; // world from an older day = start fresh
       this.tags = sameDay ? saved.get('tags') || [] : [];
       this.stats = saved.get('stats') || {};
-      if (sameDay && saved.get('truck')) this.truck = { ...this.truck, ...saved.get('truck'), o: 0, sp: 0 };
+      if (sameDay && saved.get('truck')) this.truck = { ...this.truck, ...saved.get('truck'), o: 0, g: 0, sp: 0, st: 0, pt: 0 };
       if (sameDay && saved.get('props')?.length === PROPS.length) this.props = saved.get('props');
       if (saved.get('score')?.day === this.score.day) this.score = saved.get('score');
       this.registry = saved.get('registry') || [];
@@ -286,7 +286,7 @@ export class GameRoom extends DurableObject {
     this.countJoin(name);
 
     this.send(ws, { t: MSG.WELCOME, id });
-    this.send(ws, { t: MSG.VEHICLE, o: this.truck.o });
+    this.send(ws, { t: MSG.VEHICLE, o: this.truck.o, g: this.truck.g });
     this.send(ws, { t: MSG.PROPS, l: this.props.map((pr, i) => [pr[0], pr[1], this.carried.get(i) || 0]) });
     this.updateOpinion(Date.now());
     this.send(ws, this.scoreMessage());
@@ -303,7 +303,7 @@ export class GameRoom extends DurableObject {
     this.spectators.set(id, ws);
     ws.serializeAttachment({ id, sp: 1 });
     this.send(ws, { t: MSG.WELCOME, id });
-    this.send(ws, { t: MSG.VEHICLE, o: this.truck.o });
+    this.send(ws, { t: MSG.VEHICLE, o: this.truck.o, g: this.truck.g });
     this.send(ws, { t: MSG.PROPS, l: this.props.map((pr, i) => [pr[0], pr[1], this.carried.get(i) || 0]) });
     this.updateOpinion(Date.now());
     this.send(ws, this.scoreMessage());
@@ -316,11 +316,11 @@ export class GameRoom extends DurableObject {
   handleState(ws, p, msg) {
     if (!this.applyPosition(p, msg.p, msg.r, true)) return;
     // You can only be "in the vehicle" if the server says you own it.
-    p.v = msg.v && this.truck.o === p.id ? 1 : 0;
+    p.v = msg.v && (this.truck.o === p.id || this.truck.g === p.id) ? 1 : 0;
     p.b = msg.b && p.hp > 0 && !p.v ? 1 : 0;
     p.w = DEFAULT_WEAPON[p.f] ?? 0; // one weapon per side for now (extra weapons = paid items later)
 
-    if (p.v) {
+    if (p.v && this.truck.o === p.id) {
       // The driver's position IS the truck's position.
       const now = Date.now();
       const t = this.truck;
@@ -329,28 +329,44 @@ export class GameRoom extends DurableObject {
       Object.assign(t, { x: p.x, y: p.y, z: p.z, r: p.r, lastMove: now });
       if (speed > 0.3 || t.sp) this.truckActive = now; // for the AFK check
       if (TRUCK_KNOCKDOWN && speed > TRUCK_HIT_SPEED && speed < 40) this.truckHits(p, speed, now);
-    } else {
-      this.truck.lastMove = 0;
+    } else if (this.truck.o !== p.id) {
+      if (!this.truck.o) this.truck.lastMove = 0;
     }
 
     ws.serializeAttachment(p); // survive hibernation
     this.markDirty();
   }
 
+  // The water cannon has two seats, police only: the driver (first in) and the cannon operator (second).
+  // Alone, the driver also works the cannon.
   handleEnter(ws, p) {
-    const closeEnough = Math.hypot(p.x - this.truck.x, p.z - this.truck.z) <= VEHICLE_ENTER_DISTANCE + 2; // +2 = lag tolerance
-    if (this.truck.o === 0 && closeEnough && p.hp > 0) {
+    const t = this.truck;
+    const closeEnough = Math.hypot(p.x - t.x, p.z - t.z) <= VEHICLE_ENTER_DISTANCE + 2; // +2 = lag tolerance
+    if (p.f !== 'c') {
+      this.send(ws, { t: MSG.NEWS, m: 'Only the police can use the water cannon. Block it, surround it or paint its windscreen!' });
+      this.send(ws, { t: MSG.VEHICLE, o: t.o, g: t.g });
+      return;
+    }
+    if (closeEnough && p.hp > 0 && t.o !== p.id && t.g !== p.id && (!t.o || !t.g)) {
       this.dropCarried(p.id);
-      this.truck.o = p.id;
+      if (!t.o) t.o = p.id; else t.g = p.id;
       this.truckActive = Date.now();
-      this.broadcast({ t: MSG.VEHICLE, o: p.id }); // everyone learns the new driver
+      this.broadcast({ t: MSG.VEHICLE, o: t.o, g: t.g }); // everyone learns who sits where
       this.markDirty();
     } else {
-      this.send(ws, { t: MSG.VEHICLE, o: this.truck.o }); // denied
+      this.send(ws, { t: MSG.VEHICLE, o: t.o, g: t.g }); // denied
     }
   }
 
   handleExit(p, msg) {
+    if (this.truck.g === p.id) { // the cannon operator climbs out
+      this.truck.g = 0;
+      this.truck.sp = 0;
+      p.v = 0;
+      this.broadcast({ t: MSG.VEHICLE, o: this.truck.o, g: 0 });
+      this.markDirty();
+      return;
+    }
     if (this.truck.o !== p.id) return;
     // Use the final pose the driver sent, if it's valid.
     if (Array.isArray(msg.p) && msg.p.length === 3 && msg.p.every(Number.isFinite) && Number.isFinite(msg.r)
@@ -372,6 +388,7 @@ export class GameRoom extends DurableObject {
     this.applyPosition(attacker, msg.p, msg.r, true);           // freshest position + aim (speed-checked)
 
     this.broadcast({ t: MSG.SWING, id: attacker.id });          // everyone plays the animation
+    this.paintTruck(attacker, now);                             // splat on the water cannon's windscreen?
 
     const fx = Math.sin(attacker.r);  // attacker's forward direction on the ground
     const fz = Math.cos(attacker.r);
@@ -427,9 +444,14 @@ export class GameRoom extends DurableObject {
     this.broadcast({ t: MSG.CHAT_OUT, id: p.id, m });
   }
 
+  // The cannon: worked by the operator, or by the driver when nobody sits at the cannon.
+  // msg.a = where the barrel points (world yaw, 0 = +z).
   handleSpray(p, msg) {
-    if (this.truck.o !== p.id) return;
-    this.truck.sp = msg.on && this.truck.w > 1 ? 1 : 0;
+    const t = this.truck;
+    if (!(t.g === p.id || (t.o === p.id && !t.g))) return;
+    t.sp = msg.on && t.w > 1 ? 1 : 0;
+    if (Number.isFinite(msg.a)) t.a = round2(msg.a);
+    this.truckActive = Date.now();
     this.markDirty();
   }
 
@@ -560,7 +582,7 @@ export class GameRoom extends DurableObject {
     this.carried.clear();
     this.flying.clear();
     this.props = PROPS.map((p) => [p.x, p.z]);
-    this.truck = { x: TRUCK_SPAWN.x, y: TRUCK_SPAWN.y, z: TRUCK_SPAWN.z, r: TRUCK_SPAWN.r, o: 0, sp: 0, w: WATER_MAX };
+    this.truck = { x: TRUCK_SPAWN.x, y: TRUCK_SPAWN.y, z: TRUCK_SPAWN.z, r: TRUCK_SPAWN.r, o: 0, g: 0, a: TRUCK_SPAWN.r, sp: 0, w: WATER_MAX, st: 0, pt: 0 };
     this.tags = [];
     const all = [...this.players.values()];
     for (const p of all) {
@@ -673,7 +695,7 @@ export class GameRoom extends DurableObject {
         p.push([pl.id, round2(pl.x), round2(pl.y), round2(pl.z), round2(pl.r), pl.v ? 1 : 0, pl.hp, pl.b ? 1 : 0, pl.w]);
       }
       const t = this.truck;
-      const snap = { t: MSG.SNAPSHOT, p, v: [t.x, t.y, t.z, t.r, t.o, t.sp, Math.round(t.w)] };
+      const snap = { t: MSG.SNAPSHOT, p, v: [t.x, t.y, t.z, t.r, t.o, t.sp, Math.round(t.w), t.g, t.a, t.st, t.pt > now ? 1 : 0] };
       if (this.line.phase) snap.l = [Math.round(this.line.push * 10) / 10, this.line.state];
       if (this.changedProps.size) {
         snap.o = [...this.changedProps].map((i) => [i, ...this.props[i]]);
@@ -695,7 +717,8 @@ export class GameRoom extends DurableObject {
   updateWaterCannon() {
     const t = this.truck;
     const dt = TICK_MS / 1000;
-    if (!t.o) t.sp = 0;
+    if (!t.o && !t.g) t.sp = 0;
+    this.updateTruckStall();
     if (t.sp) {
       t.w = Math.max(0, t.w - WATER_USE_PER_SEC * dt);
       if (t.w <= 0) t.sp = 0; // tank empty
@@ -707,10 +730,11 @@ export class GameRoom extends DurableObject {
     if (!t.sp) return;
     this.news('The water cannon opens fire on the square!', 'spray');
 
-    const fx = Math.sin(t.r);
-    const fz = Math.cos(t.r);
-    const ox = t.x + fx * 3; // the jet starts at the front of the truck
-    const oz = t.z + fz * 3;
+    const aim = Number.isFinite(t.a) ? t.a : t.r;  // the turret can turn
+    const fx = Math.sin(aim);
+    const fz = Math.cos(aim);
+    const ox = t.x + Math.sin(t.r) * 0.6 + fx * 1.6; // the jet starts at the barrel tip on the roof
+    const oz = t.z + Math.cos(t.r) * 0.6 + fz * 1.6;
     const inJet = (x, z) => {
       const dx = x - ox, dz = z - oz;
       const dist = Math.hypot(dx, dz);
@@ -718,7 +742,7 @@ export class GameRoom extends DurableObject {
       return (dx * fx + dz * fz) / dist >= Math.cos(SPRAY_HALF_ANGLE) ? dist : 0;
     };
     for (const p of this.targets()) {
-      if (p.id === t.o || p.v) continue;
+      if (p.id === t.o || p.id === t.g || p.v) continue;
       const dist = inJet(p.x, p.z);
       if (!dist) continue;
       if (p.b && p.f === 'c' && facing(p, t.x, t.z)) continue; // the CRS shield blocks water
@@ -1056,27 +1080,69 @@ export class GameRoom extends DurableObject {
     this.saveDue = true;
   }
 
-  // The truck is moving fast: knock out anyone in its way.
+  // The truck shoves people aside (no K.O.: the water jet is the real weapon).
+  // Ramming into protesters at speed makes the police look bad.
   truckHits(driver, speed, now) {
     const t = this.truck;
     const fx = Math.sin(t.r), fz = Math.cos(t.r);   // truck forward
     const rx = -fz, rz = fx;                         // truck side
+    let rammed = 0;
     for (const target of this.targets()) {
       if (target === driver || target.v || target.hp <= 0) continue;
-      if (now - (target.th || 0) < 1500) continue;  // already hit a moment ago
+      if (now - (target.th || 0) < 700) continue;   // already shoved a moment ago
       const dx = target.x - t.x, dz = target.z - t.z;
       const along = dx * fx + dz * fz;               // in front (+) / behind (-)
       const side = dx * rx + dz * rz;
       // Truck footprint (6 x 2.4 m) + body radius + a bit of lag tolerance.
-      if (Math.abs(along) > 3 + 1.2 || Math.abs(side) > 1.2 + 1.2) continue;
+      if (Math.abs(along) > 3 + 1 || Math.abs(side) > 1.2 + 1) continue;
       target.th = now;
-      // Fly forwards and to the side the person was on.
       const sideSign = side >= 0 ? 1 : -1;
-      const launch = Math.min(TRUCK_HIT_LAUNCH, speed * 1.5);
-      this.damage(target, driver, MAX_HP,
-        fx * launch + rx * sideSign * launch * 0.6,
-        fz * launch + rz * sideSign * launch * 0.6, now, true);
+      const push = clamp(speed * 0.9, 3, 9);
+      const kx = rx * sideSign * push + fx * push * 0.4, kz = rz * sideSign * push + fz * push * 0.4;
+      if (target.npc) { target.kx = kx; target.kz = kz; }
+      else this.send(this.sockets.get(target.id), { t: MSG.PUSH, k: [round2(kx), round2(kz)], s: 1 });
+      if (speed > TRUCK_RAM_SPEED && target.f === 'g') rammed++;
     }
+    if (rammed && now - (this.lastRam || 0) > 5000) {
+      this.lastRam = now;
+      this.shiftOpinion(OPINION.backlash, 'r', driver);
+      this.news('The water cannon drives into the crowd!', 'ram' + Math.floor(now / 60000));
+    }
+  }
+
+  // Protesters can stop the truck: enough of them around it, or a barricade (3+ bins/barriers) right in front.
+  updateTruckStall() {
+    const t = this.truck;
+    let st = 0;
+    if (t.o) {
+      const fx = Math.sin(t.r), fz = Math.cos(t.r), rx = -fz, rz = fx;
+      let around = 0, blocked = 0;
+      for (const q of this.targets()) {
+        if (q.f !== 'g' || q.hp <= 0 || q.v) continue;
+        if (Math.hypot(q.x - t.x, q.z - t.z) < 4.5) around += q.npc ? 0.5 : 1;
+      }
+      this.props.forEach((pr, i) => {
+        if (this.carried.has(i) || this.flying.has(i)) return;
+        const dx = pr[0] - t.x, dz = pr[1] - t.z, along = dx * fx + dz * fz, side = dx * rx + dz * rz;
+        if (along > 2 && along < 5.5 && Math.abs(side) < 2) blocked++;
+      });
+      st = around >= TRUCK_STALL_CROWD || blocked >= 3 ? 1 : 0;
+      if (st && !t.st) this.news(blocked >= 3 ? 'A barricade stops the water cannon!' : 'Protesters surround the water cannon and stop it!', 'stall' + Math.floor(Date.now() / 60000));
+    }
+    if (st !== t.st) { t.st = st; this.markDirty(); }
+  }
+
+  // A protester hits the truck's windscreen: paint! The driver can hardly see for a few seconds.
+  paintTruck(attacker, now) {
+    const t = this.truck;
+    if (attacker.f !== 'g' || !t.o || now < (t.paintCd || 0)) return false;
+    const fx = Math.sin(t.r), fz = Math.cos(t.r);
+    if (Math.hypot(attacker.x - (t.x + fx * 3.3), attacker.z - (t.z + fz * 3.3)) > 2.6) return false;
+    t.pt = now + TRUCK_PAINT_MS;
+    t.paintCd = now + TRUCK_PAINT_MS * 2;
+    this.news('Paint on the windscreen: the water cannon is driving blind!', 'paint' + Math.floor(now / 60000));
+    this.markDirty();
+    return true;
   }
 
   // ------------------------------------------------------------------------
@@ -1230,6 +1296,7 @@ export class GameRoom extends DurableObject {
     this.sockets.delete(me.id);
     this.rate.delete(me.id);
     if (this.truck.o === me.id) this.releaseTruck();
+    if (this.truck.g === me.id) { this.truck.g = 0; this.truck.sp = 0; this.broadcast({ t: MSG.VEHICLE, o: this.truck.o, g: 0 }); }
     this.rebuildNpcs();
     // The player's NPC appears exactly where they left.
     for (const n of this.npcs.values()) {
@@ -1239,13 +1306,15 @@ export class GameRoom extends DurableObject {
     this.markDirty();
   }
 
+  // The driver gets out (the cannon operator, if any, stays at the cannon).
   releaseTruck() {
     const driver = this.players.get(this.truck.o);
     if (driver) driver.v = 0; // the driver is on foot again
     this.truck.o = 0;
-    this.truck.sp = 0;
+    if (!this.truck.g) this.truck.sp = 0;
+    this.truck.st = 0;
     this.ctx.storage.put('truck', this.truck); // rare write: only on exit
-    this.broadcast({ t: MSG.VEHICLE, o: 0 });
+    this.broadcast({ t: MSG.VEHICLE, o: 0, g: this.truck.g });
     this.markDirty();
   }
 

@@ -637,3 +637,14 @@ canvas { display: block; touch-action: none; }
   .custom-extra { grid-template-columns: 1fr; }
   .menu-card .start-row .play { padding: 13px 20px; }
 }
+
+/* paint thrown on the water cannon's windscreen: the driver sees almost nothing for a few seconds */
+.paint-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 0.4s;
+  background:
+    radial-gradient(circle at 30% 40%, rgba(224, 48, 60, 0.92) 0 14%, transparent 15%),
+    radial-gradient(circle at 55% 30%, rgba(224, 48, 60, 0.9) 0 10%, transparent 11%),
+    radial-gradient(circle at 70% 55%, rgba(200, 30, 45, 0.88) 0 17%, transparent 18%),
+    radial-gradient(circle at 42% 68%, rgba(224, 48, 60, 0.85) 0 12%, transparent 13%),
+    radial-gradient(circle at 18% 72%, rgba(200, 30, 45, 0.8) 0 8%, transparent 9%),
+    radial-gradient(circle at 85% 25%, rgba(224, 48, 60, 0.8) 0 7%, transparent 8%),
+    rgba(120, 10, 20, 0.25); }

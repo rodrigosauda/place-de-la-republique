@@ -83,7 +83,7 @@ export class NetClient {
         case MSG.WELCOME: this.myId = msg.id; this.onWelcome(msg.id); break;
         case MSG.ROSTER: this.onRoster(msg.l); break;
         case MSG.SNAPSHOT: this.onSnapshot(msg, now); break;
-        case MSG.VEHICLE: this.onVehicle(msg.o); break;
+        case MSG.VEHICLE: this.onVehicle(msg.o, msg.g ?? 0); break;
         case MSG.SWING: this.onSwing(msg.id, msg); break;
         case MSG.HIT: this.onHit(msg); break;
         case MSG.BLOCKED: this.onBlocked(msg.id); break;

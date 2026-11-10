@@ -108,6 +108,12 @@ async function start() {
   const roles = new Map();    // id -> role code ('m' | 'j' | 'd' | '')
   let local = null;          // LocalPlayer, created when you press Play
   let pendingExit = false;   // we left the truck; ignore old "you own it" messages
+  let seat = null;           // in the truck: 'driver' or 'gunner' (the cannon), else null
+  let cannonView = false;    // in the truck: looking from the cannon (V) instead of the chase camera
+  let aimSent = null;        // last cannon aim sent to the server
+  const paintOverlay = document.createElement('div'); // paint on the windscreen (driver only)
+  paintOverlay.className = 'paint-overlay';
+  document.body.appendChild(paintOverlay);
   let tutorial = null;       // first-minute guide (see ui/tutorial.js)
   let progress = null;       // daily missions, XP and badges (see ui/progress.js)
   let spectating = false;    // "Just watch": no body, free camera
@@ -146,25 +152,32 @@ async function start() {
   });
   const touch = setupTouchControls(input, { onChat: () => chat.open() });
 
-  // ------------------------------------------------------ truck ownership
-  // The server is the boss: we only enter the truck when it says we own it.
-  function setTruckOwner(ownerId) {
+  // ------------------------------------------------------ truck seats
+  // The server is the boss: we only get in when it says we have a seat.
+  // Two seats, police only: the driver (first in) and the cannon operator (second in).
+  function setTruckOwner(ownerId, gunnerId = truck.gunnerId) {
+    gunnerId = gunnerId || 0;
     if (pendingExit) {
-      if (ownerId === net.myId) return; // stale message from before our exit
+      if (ownerId === net.myId || gunnerId === net.myId) return; // stale message from before our exit
       pendingExit = false;
     }
-    if (ownerId === truck.ownerId) return;
-    const previous = truck.ownerId;
+    if (ownerId === truck.ownerId && gunnerId === truck.gunnerId) return;
+    const previousOwner = truck.ownerId;
     truck.ownerId = ownerId;
-    truck.setDriverName(ownerId ? names.get(ownerId) ?? '?' : null);
-
-    if (ownerId === net.myId && local && !local.inVehicle) {
-      local.enterVehicle(); // we got the keys!
+    truck.gunnerId = gunnerId;
+    truck.setDriverName(ownerId ? names.get(ownerId) ?? '?' : null, gunnerId ? names.get(gunnerId) ?? '?' : null);
+    const mySeat = ownerId === net.myId ? 'driver' : gunnerId === net.myId ? 'gunner' : null;
+    if (mySeat && local && !local.inVehicle) {
+      local.enterVehicle(); // we got a seat!
+      seat = mySeat;
+      cannonView = mySeat === 'gunner'; // the operator starts at the cannon, the driver behind the truck
       truck.resetBuffer();
       cam.distance = 15;
-    } else if (previous === net.myId && local?.inVehicle) {
-      exitTruck(false); // server took the truck away from us (rare)
-    } else {
+    } else if (mySeat) {
+      seat = mySeat;
+    } else if (local?.inVehicle) {
+      exitTruck(false); // server took our seat away (rare)
+    } else if (previousOwner !== ownerId) {
       truck.resetBuffer(); // someone else started/stopped driving
     }
   }
@@ -178,9 +191,11 @@ async function start() {
       net.send({ t: MSG.EXIT, p: [round2(p.x), round2(p.y), round2(p.z)], r: round2(truck.yaw) });
       pendingExit = true;
     }
-    truck.ownerId = 0;
+    if (seat === 'driver') truck.ownerId = 0; else truck.gunnerId = 0;
+    seat = null;
+    cannonView = false;
     truck.spraying = false;
-    truck.setDriverName(null);
+    truck.setDriverName(truck.ownerId ? names.get(truck.ownerId) : null, truck.gunnerId ? names.get(truck.gunnerId) : null);
     truck.resetBuffer(); // stay parked where we left it
     cam.distance = 9;
   }
@@ -201,6 +216,7 @@ async function start() {
       // RECONNECT: the server freed the truck and reset our health; match that.
       if (local.inVehicle) exitTruck(false);
       truck.ownerId = 0;
+      truck.gunnerId = 0;
       pendingExit = false;
       if (local.isKO) local.respawn();
       local.hp = MAX_HP;
@@ -238,19 +254,25 @@ async function start() {
       if (id === net.myId) continue; // we already know where we are
       remotes.get(id)?.onSnapshot(now, x, y, z, r, v, hp, b, w);
     }
-    const [x, y, z, r, owner, spraying, water] = msg.v;
-    setTruckOwner(owner);
+    const [x, y, z, r, owner, spraying, water, gunner, aim, stalled, painted] = msg.v;
+    setTruckOwner(owner, gunner);
     truck.water = water ?? truck.water;
+    truck.stalled = stalled === 1;
+    truck.painted = painted === 1;
     // Only follow the server's truck when we are NOT the driver.
-    if (truck.ownerId !== net.myId && !pendingExit) {
-      truck.onSnapshot(now, x, y, z, r);
+    if (truck.ownerId !== net.myId && !pendingExit) truck.onSnapshot(now, x, y, z, r);
+    // ...and the cannon when we are not the one working it.
+    if (!controlsCannon() && !pendingExit) {
       truck.spraying = spraying === 1;
+      if (Number.isFinite(aim)) truck.aim = aim;
     }
     for (const [i, px, pz] of msg.o ?? []) props.setOne(i, px, pz);
     if (msg.l) riot.setLine(msg.l[0], msg.l[1]); // how far the police line has got
   };
 
-  net.onVehicle = (ownerId) => setTruckOwner(ownerId);
+  net.onVehicle = (ownerId, gunnerId) => setTruckOwner(ownerId, gunnerId);
+  // Do WE work the cannon? (the operator, or the driver when nobody sits at the cannon)
+  function controlsCannon() { return !!local?.inVehicle && (seat === 'gunner' || (seat === 'driver' && !truck.gunnerId)); }
   net.onProps = (list) => {
     props.setAll(list);
     list.forEach(([, , carrier]) => { if (carrier) remotes.get(carrier)?.fx.setCarrying(true); });
@@ -393,6 +415,7 @@ async function start() {
     if (local.inVehicle) exitTruck(false);
     pendingExit = false;
     truck.ownerId = 0;
+    truck.gunnerId = 0;
     truck.place(TRUCK_SPAWN.x, TRUCK_SPAWN.y, TRUCK_SPAWN.z, TRUCK_SPAWN.r);
     local.setCarrying(-1);
     local.respawn();
@@ -645,9 +668,10 @@ async function start() {
       net.ws.send(json);
     }
     // Water cannon on/off (only when it changes).
-    if (driving && truck.spraying !== sprayingSent) {
+    if (controlsCannon() && (truck.spraying !== sprayingSent || aimSent === null || Math.abs(Math.atan2(Math.sin(truck.aim - aimSent), Math.cos(truck.aim - aimSent))) > 0.04)) {
       sprayingSent = truck.spraying;
-      net.send({ t: MSG.SPRAY, on: sprayingSent ? 1 : 0 });
+      aimSent = truck.aim;
+      net.send({ t: MSG.SPRAY, on: sprayingSent ? 1 : 0, a: round2(truck.aim) });
     }
     // Bins / barriers we pushed.
     for (const [i, x, z] of props.takeChanges()) net.send({ t: MSG.PROP, i, p: [round2(x), round2(z)] });
@@ -700,8 +724,13 @@ async function start() {
     props.update(dt, holderOf);
     for (const remote of remotes.values()) remote.update(now, dt);
     if (driving) {
-      truck.spraying = input.spray && truck.water > 1;
-      truck.drive(dt, input, props);
+      if (controlsCannon()) {
+        truck.spraying = input.spray && truck.water > 1;
+        // Aim: where you look in the cannon view (or behind the truck camera); straight ahead while just driving.
+        truck.aim = cannonView || seat === 'gunner' ? cam.aimYaw : truck.yaw;
+      }
+      if (seat === 'driver') truck.drive(dt, input, props);
+      else truck.followNetwork(now);
     } else {
       if (local) {
         local.blocking = input.block && !local.isKO && local.carrying < 0;
@@ -715,7 +744,14 @@ async function start() {
     const others = [];
     if (local && !local.inVehicle) others.push(local.position);
     for (const r of remotes.values()) others.push(r.mesh.position);
+    {
+      const tp = truck.position, lt = truck._lastRiot;
+      const sp = seat === 'driver' ? truck.speed : lt && dt > 0 ? Math.hypot(tp.x - lt.x, tp.z - lt.z) / dt : 0;
+      truck._lastRiot = { x: tp.x, z: tp.z };
+      riot.setTruck({ x: tp.x, z: tp.z, yaw: truck.yaw, speed: sp });
+    }
     riot.update(dt, local?.faction, dayNight.daylight ?? 1, others);
+    paintOverlay.style.opacity = local?.inVehicle && seat === 'driver' && truck.painted ? '1' : '0';
     // Walked into the police line (or it advanced onto you)? Get pushed back in front of it.
     if (local && !driving) {
       const push = riot.keepOut(local.position, local.faction);
@@ -728,15 +764,23 @@ async function start() {
     // 3) physics -> meshes
     local?.syncMesh();
     truck.syncMesh();
+    truck.updateVisuals(dt, now);
 
     // 4) effects, camera, light, HUD
     local?.fx.update(dt, local.speed);
     spray.update(dt, truck, truck.spraying);
     sfx.spray(truck.spraying, driving ? 1 : volumeAt(truck.position));
 
-    if (driving) {
+    if (driving && cannonView) {
+      // Cannon view: from the turret on the roof, looking where you aim (mouse), a bit downwards.
+      const tip = truck.barrelTip(tmp);
+      const look = cam.aimYaw, down = 0.05 + (cam.pitch - 0.35) * 0.5;
+      cam.target.copy(truck.position);
+      cam.camera.position.set(tip.x - Math.sin(look) * 1.8, tip.y + 0.9, tip.z - Math.cos(look) * 1.8);
+      cam.camera.lookAt(tip.x + Math.sin(look) * 10, tip.y + 0.9 - Math.tan(down) * 10, tip.z + Math.cos(look) * 10);
+    } else if (driving) {
       // Gently swing the camera behind the truck while driving.
-      if (Math.abs(truck.speed) > 1) cam.yaw = lerpAngle(cam.yaw, truck.yaw + Math.PI, 1 - Math.exp(-2 * dt));
+      if (seat === 'driver' && Math.abs(truck.speed) > 1) cam.yaw = lerpAngle(cam.yaw, truck.yaw + Math.PI, 1 - Math.exp(-2 * dt));
       cam.update(dt, truck.position, 1.5);
     } else if (local) {
       cam.update(dt, local.position, 0.8);
@@ -774,10 +818,11 @@ async function start() {
     // E = enter / exit the truck
     if (input.pressed('KeyE')) {
       if (driving) exitTruck();
-      else if (!local.isKO && local.position.distanceTo(truck.position) < VEHICLE_ENTER_DISTANCE && truck.ownerId === 0) {
-        net.send({ t: MSG.ENTER }); // wait for the server's answer (MSG.VEHICLE)
+      else if (!local.isKO && local.position.distanceTo(truck.position) < VEHICLE_ENTER_DISTANCE && (!truck.ownerId || !truck.gunnerId)) {
+        net.send({ t: MSG.ENTER }); // wait for the server's answer (MSG.VEHICLE); protesters get told why not
       }
     }
+    if (input.pressed('KeyV') && driving) cannonView = !cannonView; // in the truck: cannon view / chase camera
     if (input.pressed('KeyF') && !driving) attack();
     if (input.pressed('KeyC') && !driving) local.wantDash = true; // dodge roll
     if (input.pressed('KeyG') && !driving) grabOrThrow();
@@ -849,9 +894,17 @@ async function start() {
     wasCurfew = curfew;
 
     if (local.isKO) hud.setHint('');
-    else if (local.inVehicle) hud.setHint('W/S: drive · A/D: steer · hold click or Space: water · E: get out');
-    else if (local.position.distanceTo(truck.position) < VEHICLE_ENTER_DISTANCE) {
-      hud.setHint(truck.ownerId ? `Truck driven by ${names.get(truck.ownerId) ?? '?'}` : 'Press E to drive the water cannon');
+    else if (local.inVehicle && truck.stalled && seat === 'driver') hud.setHint('STOPPED: protesters or a barricade are blocking the truck. Hose them away!');
+    else if (local.inVehicle) {
+      const water = controlsCannon() ? ' · hold click or Space: water' : '';
+      const view = ` · V: ${cannonView ? 'chase camera' : 'cannon view'}`;
+      hud.setHint(seat === 'driver' ? `W/S: drive · A/D: steer${water}${view} · E: get out`
+        : `You work the cannon: move the mouse to aim${water}${view} · E: get out`);
+    } else if (local.position.distanceTo(truck.position) < VEHICLE_ENTER_DISTANCE) {
+      if (local.faction !== 'c') hud.setHint('The police water cannon. Surround it with 3+ protesters or block it with a barricade; hit its windscreen to paint it!');
+      else if (!truck.ownerId) hud.setHint('Press E to drive the water cannon');
+      else if (!truck.gunnerId) hud.setHint(`Press E to work the cannon (${names.get(truck.ownerId) ?? '?'} drives)`);
+      else hud.setHint('The water cannon is full (driver + cannon)');
     } else if (performance.now() < abilityHintUntil) hud.setHint(abilityHint);
     else if (performance.now() < safeHintUntil) hud.setHint('Safe zone: no fighting here. Step out of the ring to fight.');
     else if (performance.now() < gasHintUntil) hud.setHint('Tear gas is reloading…');

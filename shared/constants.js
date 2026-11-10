@@ -31,12 +31,12 @@ export const MSG = {
   CROWD: 'u',       // { t, i, k: [kx, kz] }  I hit background extra number i
   GAS: 'h',         // { t, p: [x, z] }      (police) throw a tear-gas canister at x, z
   STATE: 's',       // { t, p: [x, y, z], r: rotationY, v: 0|1 (in vehicle), b: 0|1 (blocking), w: weapon index }
-  ENTER: 'e',       // { t }                 ask to drive the truck
-  EXIT: 'x',        // { t, p: [x,y,z], r }  leave the truck (with its final pose)
+  ENTER: 'e',       // { t }                 ask for a seat in the truck (police: driver, then cannon operator)
+  EXIT: 'x',        // { t, p: [x,y,z], r }  leave the truck (driver: with its final pose)
   ATTACK: 'a',      // { t, p: [x,y,z], r }  swing your weapon (server checks who gets hit)
   RESPAWN: 'R',     // { t, p: [x,y,z] }     KO is over, I'm back on my feet at p
   CHAT: 'c',        // { t, m: text }        say something (bubble above your head)
-  SPRAY: 'w',       // { t, on: 0|1 }        driver turns the water cannon on/off
+  SPRAY: 'w',       // { t, on: 0|1, a? }    cannon on/off + aim (world yaw); by the operator, or the driver if alone
   PROP: 'o',        // { t, i, p: [x, z] }   I pushed street prop number i to (x, z)
   GRAB: 'g',        // { t, i }              pick up street prop i
   THROW: 'T',       // { t, i, p: [x,y,z], v: [vx,vy,vz] }  throw the prop I'm carrying
@@ -45,7 +45,7 @@ export const MSG = {
   WELCOME: 'w',     // { t, id }                         your player id
   ROSTER: 'r',      // { t, l: [[id, name, faction, slogan, isNpc, look], ...] } who is in the room (players + NPCs)
   SNAPSHOT: 'S',    // { t, p: [[id,x,y,z,r,v,hp,b,w], ...], v: [x,y,z,r,ownerId|0,spraying,water], o?: [[i,x,z], ...] }
-  VEHICLE: 'v',     // { t, o: ownerId|0 }               truck owner changed
+  VEHICLE: 'v',     // { t, o: driverId|0, g: gunnerId|0 } who sits in the truck
   SWING: 'A',       // { t, id }                         someone swung (play the animation)
   HIT: 'H',         // { t, id, by, hp, k: [kx, kz], v?: 1 } someone got hit (+ knockback; v=1: hit by the truck)
   BLOCKED: 'B',     // { t, id }                         someone blocked a hit with their shield
@@ -164,6 +164,10 @@ export const THROW_KNOCK = 10;          // m/s push when a thrown prop hits you
 export const TRUCK_KNOCKDOWN = true;
 export const TRUCK_HIT_SPEED = 4;       // m/s (~15 km/h)
 export const TRUCK_HIT_LAUNCH = 12;     // m/s how hard people fly away
+export const TRUCK_RAM_SPEED = 7;       // m/s: shoving protesters faster than this costs the police public opinion
+export const TRUCK_STALL_CROWD = 3;     // this many protesters around the truck stop it (NPCs count half)
+export const TRUCK_STALL_SPEED = 1;     // m/s: how fast a stopped truck can still creep
+export const TRUCK_PAINT_MS = 4000;     // paint on the windscreen blurs the driver's view this long
 
 // ---------------------------------------------------------------------------
 // Water cannon

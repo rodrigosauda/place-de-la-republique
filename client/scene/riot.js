@@ -398,9 +398,28 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
   let lastAmbientGas = -1;
   const state = { centroid: new THREE.Vector3(), crowdCount: 0, flares: [], chantLevel: 0, heliPos: heli.position, drumHit: 0, heliOn: false };
 
+  // The truck (set every frame by main.js): anyone inside its footprint is pushed out to the nearest side.
+  let truckInfo = null;
+  function shoveFromTruck(a) {
+    const t = truckInfo;
+    const dx = a.x - t.x, dz = a.z - t.z;
+    if (Math.abs(dx) > 5 || Math.abs(dz) > 5) return;
+    const fx = Math.sin(t.yaw), fz = Math.cos(t.yaw), rx = -fz, rz = fx;
+    const along = dx * fx + dz * fz, side = dx * rx + dz * rz;
+    const HL = 3.4, HW = 1.6;
+    if (Math.abs(along) > HL || Math.abs(side) > HW) return;
+    // Out sideways (or forwards if right in front of the bumper), a little further when it moves fast.
+    const extra = Math.min(1.2, Math.abs(t.speed) * 0.08);
+    if (along > HL - 0.8 && Math.abs(side) < HW * 0.6) { const d = HL - along + extra; a.x += fx * d; a.z += fz * d; }
+    const s = side >= 0 ? 1 : -1, d = HW - Math.abs(side) + extra;
+    a.x += rx * s * d; a.z += rz * s * d;
+    if (Math.abs(t.speed) > 3) a.moving = 1.6; // stumbling away
+  }
+
   return {
     state,
     get line() { return line; }, // for debugging / tests: where the police line stands now
+    setTruck(info) { truckInfo = info; },
     addGas,
     throwGas,
     gasClouds,
@@ -629,6 +648,8 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         a.target = target;
         count++; cx += a.x; cz += a.z;
       }
+      // The water cannon shoves the extras aside (they are never "ghosts" it drives through).
+      if (truckInfo) for (let i = 0; i < NC; i++) shoveFromTruck(crowd[i]);
       // Keep apart from each other and from players (step aside instead of walking through).
       for (let i = 0; i < NC; i++) {
         const a = crowd[i];
@@ -792,6 +813,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
           c.x += (dx / dist) * step; c.z += (dz / dist) * step;
         }
         avoidObstacles(c, 0.8);
+        if (truckInfo) shoveFromTruck(c);
         const vel = step / Math.max(dt, 1e-4);
         c.moving += ((vel > 0.4 ? Math.min(1.6, vel / 2.2) : 0) - c.moving) * Math.min(1, dt * 8);
         c.stride += step * 3.3;

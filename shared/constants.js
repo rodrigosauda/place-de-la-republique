@@ -40,6 +40,7 @@ export const MSG = {
   PROP: 'o',        // { t, i, p: [x, z] }   I pushed street prop number i to (x, z)
   GRAB: 'g',        // { t, i }              pick up street prop i
   THROW: 'T',       // { t, i, p: [x,y,z], v: [vx,vy,vz] }  throw the prop I'm carrying
+  ICE: 'i',         // { t }                 buy an ice cream at the van (paid in coins by the client)
 
   // server -> client
   WELCOME: 'w',     // { t, id }                         your player id
@@ -67,6 +68,7 @@ export const MSG = {
   ABILITY_OUT: 'Q', // { t, id, k: role, ok: 0|1, to?: id, hp? }  someone used a role ability (ok 0 = nothing to do)
   BOARD: 'D',       // { t, l: [[name, faction, points], ...], k: { g: [[name, kos]x3], c: [...] } }  today's top 5 + top 3 K.O. per side
   ERROR: 'E',       // { t, m: message }
+  EAT_OUT: 'J',     // { t, id, ok: 0|1, hp?, ms?, wait? }  someone got an ice cream (+1 heart, eating for ms: no fighting); ok 0 = not now (to you only)
 };
 
 // ---------------------------------------------------------------------------
@@ -94,9 +96,13 @@ export const BASES = {
   c: { x: -27.5, z: -54, r: 7, label: 'POLICE BASE' },          // north side, in front of the Caserne Vérines, between two police buses
   g: { x: 60, z: 47.5, r: 6.5, label: 'CAFÉ RÉPUBLIQUE' },     // south side, the real Café République terrace
 };
+// The ice-cream van on the north side of the square: buy an ice cream (+1 heart). No fighting around it.
+export const ICE_CREAM = { x: -50, z: -37, r: 7, rot: 0, label: 'GLACES · ICE CREAM' };
+export const ICE_EAT_MS = 6000;        // eating takes this long: you cannot hit anyone meanwhile
+export const ICE_COOLDOWN_MS = 40000;  // one ice cream every 40 s at most
 export function inSafeZone(x, z) {
   for (const b of Object.values(BASES)) if (Math.hypot(x - b.x, z - b.z) < b.r) return true;
-  return false;
+  return Math.hypot(x - ICE_CREAM.x, z - ICE_CREAM.z) < ICE_CREAM.r;
 }
 
 // Spawn areas per faction (x/z centre + random radius). y is set by physics.

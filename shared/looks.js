@@ -12,7 +12,8 @@
 //                   Premium items are cosmetic only: never anything that changes strength or fairness.
 // faction: 'g' or 'c' -> only that side can pick it (undefined = both).
 
-export const PREMIUM_ENFORCED = true;
+// The game is free (coins earned in play, kept in the browser), so the server no longer checks ownership.
+export const PREMIUM_ENFORCED = false;
 export const DEFAULT_PRICE = 99;
 
 export const BODIES = [

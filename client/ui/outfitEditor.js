@@ -14,6 +14,7 @@ import {
   SHOP_SLOTS, CATALOG_FOR_EDITOR, defaultLook, itemAllowed, itemKey, priceOfItem,
 } from '../../shared/looks.js';
 import { formatPrice, totalPrice } from '../../shared/shop.js';
+import { coinsForCents } from '../../shared/tasks.js';
 import { wallet } from '../shop/wallet.js';
 import { openShop } from './shop.js';
 
@@ -113,9 +114,9 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
   function refreshLocks() {
     for (const badge of badges) {
       const own = wallet.owned.has(badge.dataset.key);
-      badge.textContent = own ? '✓' : formatPrice(Number(badge.dataset.price));
+      badge.textContent = own ? '✓' : badge.dataset.price;
       badge.classList.toggle('own', own);
-      badge.title = own ? 'You own this' : 'Premium: try it on, buy it to wear it in the game';
+      badge.title = own ? 'Unlocked' : `${badge.dataset.price} coins: try it on, unlock it in the shop to wear it in the game`;
     }
     const locked = [];
     for (const slot of SHOP_SLOTS) {
@@ -175,7 +176,7 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
         const badge = document.createElement('span');
         badge.className = 'premium';
         badge.dataset.key = `${slot}:${item.id}`;
-        badge.dataset.price = priceOfItem(item);
+        badge.dataset.price = coinsForCents(priceOfItem(item));
         b.appendChild(badge);
         badges.push(badge);
       }

@@ -39,7 +39,14 @@ export class CharacterFx {
   // ------------------------------------------------------------ state setters
   setWeapon(i) {
     this.weapon = i;
-    this.parts.weapons.forEach((w, k) => { if (w) w.visible = k === i && !this.carrying; });
+    this.parts.weapons.forEach((w, k) => { if (w) w.visible = k === i && !this.carrying && !this.eating; });
+  }
+
+  // Eating an ice cream: the cone replaces the weapon, the hand goes up to the mouth now and then.
+  setEating(on) {
+    this.eating = on;
+    this.parts.iceCream && (this.parts.iceCream.visible = on);
+    this.parts.weapons.forEach((w, k) => { if (w) w.visible = !on && k === this.weapon && !this.carrying; });
   }
 
   setCarrying(on) {
@@ -115,6 +122,7 @@ export class CharacterFx {
       else { ra = -1.8; raz = 0.5; la = -1.8; laz = -0.5; }     // guard with both arms
     }
     if (this.carrying) { ra = -2.95; la = -2.95; raz = 0.25; laz = -0.25; } // bin above the head
+    if (this.eating) { const lick = Math.max(0, Math.sin(this.time * 2.2)); ra = -0.9 - lick * 1.1; raz = -0.35 * lick; }
 
     switch (emote) {
       case 'wave': ra = -2.7; raz = Math.sin(this.time * 10) * 0.4; break;

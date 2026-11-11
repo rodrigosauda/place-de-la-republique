@@ -43,6 +43,7 @@ export class NetClient {
     this.onCrowd = () => {};
     this.onAbility = () => {};
     this.onBoard = () => {};
+    this.onEat = () => {};
     this.spectate = false; // true = just watching (no body, no score)
     this.role = '';  // 'm' | 'j' | 'd' | '' (set by main.js)
     this.badge = 0;  // loyalty stars 0-3 (cosmetic)
@@ -104,6 +105,7 @@ export class NetClient {
         case MSG.CROWD_OUT: this.onCrowd(msg); break;
         case MSG.ABILITY_OUT: this.onAbility(msg); break;
         case MSG.BOARD: this.onBoard(msg.l, msg.k); break;
+        case MSG.EAT_OUT: this.onEat(msg); break;
       }
     });
 

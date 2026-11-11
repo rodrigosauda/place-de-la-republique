@@ -49,12 +49,12 @@ export function openShop({ highlight = [], faction = 'g', look = null, slogan = 
   // ---------------------------------------------------------------- frame (built once)
   card.innerHTML = `
     <div class="shop-head"><h2>Shop</h2><button type="button" class="shop-close" title="Close (Esc)">✕</button></div>
-    <p class="shop-info"><b>Cosmetic only</b>: nothing here makes you stronger. <span class="shop-test">Test mode: nothing is charged.</span></p>
+    <p class="shop-info"><span class="shop-coins"></span> Everything is free: earn coins with tasks (press P in the game). Items are only for looks.</p>
     <div class="shop-body">
       <div class="shop-side">
         <div class="shop-preview"></div>
         <div class="shop-trying"></div>
-        <details class="shop-wallet"><summary>Your wallet</summary><div class="shop-wallet-in"></div></details>
+
       </div>
       <div class="shop-main">
         <div class="shop-tabs"></div>
@@ -113,13 +113,11 @@ export function openShop({ highlight = [], faction = 'g', look = null, slogan = 
 
   // ---------------------------------------------------------------- buying
   async function buy(id) {
-    status = 'Processing…';
-    render();
     try {
-      const res = await wallet.buy([id]);
-      status = res.test ? 'Added to your wallet. (Test mode: nothing was charged.)' : 'Thank you!';
+      await wallet.buy([id]);
+      status = 'Unlocked! Wear it from the outfit editor (O).';
     } catch (e) {
-      status = `Could not buy: ${e.message}`;
+      status = e.message;
     }
     confirming = null;
     render();
@@ -129,13 +127,16 @@ export function openShop({ highlight = [], faction = 'g', look = null, slogan = 
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'shop-buy';
-    if (own) { b.classList.add('owned'); b.textContent = 'Owned ✓'; b.disabled = true; return b; }
+    if (own) { b.classList.add('owned'); b.textContent = 'Unlocked ✓'; b.disabled = true; return b; }
     const price = totalPrice([p.id], wallet.owned);
     const partial = p.grants.some((k) => wallet.owned.has(k));
-    b.textContent = confirming === p.id ? `Confirm ${formatPrice(price)}` : `${partial ? 'Complete for ' : ''}${formatPrice(price)}`;
+    const short = price > wallet.coins;
+    b.textContent = confirming === p.id ? `Unlock for ${formatPrice(price)}?` : `${partial ? 'Complete for ' : ''}${formatPrice(price)}`;
     if (confirming === p.id) b.classList.add('confirm');
+    if (short) { b.classList.add('short'); b.title = `You need ${price - wallet.coins} more coins`; }
     b.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (short) { status = `You need ${price - wallet.coins} more coins for ${p.label}. Do tasks (P) to earn them.`; render(); return; }
       if (confirming === p.id) { clearTimeout(confirmTimer); buy(p.id); return; }
       confirming = p.id;
       clearTimeout(confirmTimer);
@@ -220,33 +221,7 @@ export function openShop({ highlight = [], faction = 'g', look = null, slogan = 
     }
     scroll.scrollTop = keep;
 
-    // Wallet: the recovery code and a way to restore items on another device.
-    const w = $('.shop-wallet-in');
-    w.innerHTML = '';
-    if (wallet.code) {
-      const line = document.createElement('div');
-      line.innerHTML = '<b>Wallet code</b> (your only key to your items): ';
-      const c = document.createElement('code');
-      c.textContent = wallet.code;
-      const copy = document.createElement('button');
-      copy.type = 'button'; copy.textContent = 'Copy';
-      copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(wallet.code); copy.textContent = 'Copied'; } catch { copy.textContent = 'Select and copy it'; } });
-      line.append(c, copy);
-      w.appendChild(line);
-    } else {
-      const p = document.createElement('div');
-      p.textContent = 'No purchases yet. After your first one you get a wallet code to use your items on other devices.';
-      w.appendChild(p);
-    }
-    const restore = document.createElement('form');
-    restore.className = 'shop-restore';
-    restore.innerHTML = '<input placeholder="RPR-XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" /><button type="submit">Restore</button>';
-    restore.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      try { await wallet.restore(restore.querySelector('input').value); status = 'Items restored.'; } catch (err) { status = err.message; }
-      render();
-    });
-    w.appendChild(restore);
+    $('.shop-coins').innerHTML = `<b class="coin-pill">${wallet.coins} coins</b>`;
   }
 
   render();

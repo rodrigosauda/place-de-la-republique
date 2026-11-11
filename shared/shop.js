@@ -1,11 +1,12 @@
 // shared/shop.js
-// What is for sale. Used by the shop screen (client) and by the checkout (worker), so the price
-// the player sees is the price the server charges. Prices are in euro cents.
+// What is in the shop. The game is free: prices are in COINS, earned by doing tasks (shared/tasks.js).
+// (The old real-money checkout in worker/shop.js is switched off; it would read the same numbers.)
 // Everything here is cosmetic. Nothing may ever change how strong a player is or how fights go.
 
 import { CATALOG_FOR_EDITOR, SHOP_SLOTS, priceOfItem } from './looks.js';
+import { coinsForCents } from './tasks.js';
 
-export const CURRENCY = 'EUR';
+export const CURRENCY = 'COINS';
 
 export const SLOT_TITLES = {
   hat: 'Hats and helmets', face: 'Faces', back: 'Back items', top: 'Tops', placard: 'Placards',
@@ -14,11 +15,11 @@ export const SLOT_TITLES = {
 
 // Bundles are cheaper than buying the parts. `grants` are item keys.
 export const BUNDLES = [
-  { id: 'bundle:founder', label: 'Founder pack', desc: 'Gold name, gold dust trail, gold placard, tricolour cape', price: 350,
+  { id: 'bundle:founder', label: 'Founder pack', desc: 'Gold name, gold dust trail, gold placard, tricolour cape', price: 700,
     grants: ['flair:founder', 'trail:gold', 'placard:gold', 'back:cape'] },
-  { id: 'bundle:tricolor', label: 'Blue-white-red pack', desc: 'Tricolour beanie, cape, sparks trail and name', price: 300,
+  { id: 'bundle:tricolor', label: 'Blue-white-red pack', desc: 'Tricolour beanie, cape, sparks trail and name', price: 600,
     grants: ['hat:tricolor', 'back:cape', 'trail:tricolor', 'flair:tricolor'] },
-  { id: 'bundle:party', label: 'Party pack', desc: 'Clown nose, confetti, feathers, star name', price: 250,
+  { id: 'bundle:party', label: 'Party pack', desc: 'Clown nose, confetti, feathers, star name', price: 500,
     grants: ['face:clown', 'trail:confetti', 'trail:feathers', 'flair:star'] },
 ];
 
@@ -28,7 +29,7 @@ export function itemProducts() {
   for (const slot of SHOP_SLOTS) {
     for (const item of CATALOG_FOR_EDITOR[slot] || []) {
       if (typeof item !== 'object' || !item.premium) continue;
-      out.push({ id: `${slot}:${item.id}`, slot, label: item.label, price: priceOfItem(item), faction: item.faction, grants: [`${slot}:${item.id}`] });
+      out.push({ id: `${slot}:${item.id}`, slot, label: item.label, price: coinsForCents(priceOfItem(item)), faction: item.faction, grants: [`${slot}:${item.id}`] });
     }
   }
   return out;
@@ -56,7 +57,7 @@ export function totalPrice(productIds, owned = new Set()) {
   return sum;
 }
 
-export const formatPrice = (cents) => `€${(cents / 100).toFixed(2)}`;
+export const formatPrice = (coins) => `${coins} coins`;
 
 // Wallet codes: "RPR-XXXX-XXXX-XXXX-XXXX" (80 bits of randomness, no look-alike characters).
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // 31 symbols

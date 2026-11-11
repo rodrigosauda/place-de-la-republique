@@ -11,6 +11,8 @@
 
 import { loadProfile, updateProfile } from '../profile.js';
 import { FACTIONS } from '../../shared/constants.js';
+import { TASKS, tasksFor, COINS } from '../../shared/tasks.js';
+import { wallet } from '../shop/wallet.js';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (also used by the start menu and the tests)
@@ -73,12 +75,13 @@ export function pickMissions(faction, role, key = dateKey()) {
 
 // ---------------------------------------------------------------------------
 export function loadProgress(profile = loadProfile()) {
-  const base = { xp: 0, counts: { chant: 0, tag: 0, treat: 0, photo: 0, drum: 0, hold: 0, play: 0, peaceBest: 0 }, badges: {}, daily: null };
+  const base = { xp: 0, counts: { chant: 0, tag: 0, treat: 0, photo: 0, drum: 0, hold: 0, play: 0, peaceBest: 0 }, badges: {}, daily: null, tasks: {}, spots: [] };
   const p = profile.progress || {};
-  return { ...base, ...p, counts: { ...base.counts, ...(p.counts || {}) }, badges: { ...(p.badges || {}) } };
+  return { ...base, ...p, counts: { ...base.counts, ...(p.counts || {}) }, badges: { ...(p.badges || {}) }, tasks: { ...(p.tasks || {}) }, spots: [...(p.spots || [])] };
 }
 
 export function createProgress({ faction, role, tutorial = false }) {
+  const offCoins = wallet.onChange(() => renderTracker());
   let state = loadProgress();
   const key = dateKey();
   if (!state.daily || state.daily.key !== key || state.daily.faction !== faction || state.daily.role !== role) {
@@ -118,11 +121,22 @@ export function createProgress({ faction, role, tutorial = false }) {
     setTimeout(() => el.remove(), 4900);
   }
 
+  // ---- the 50 tasks (shared/tasks.js): done once, each pays coins
+  const myTasks = tasksFor(faction);
+  const taskCount = (t) => (t.ev === 'peace' ? state.counts.peaceBest : t.ev === 'spot' ? state.spots.length : state.counts[t.ev] || 0);
+  const taskPct = (t) => Math.min(100, Math.round((taskCount(t) / t.goal) * 100));
+  const openTasks = () => myTasks.filter((t) => !state.tasks[t.id]);
+  // The three to show: the closest to done first (then the easiest).
+  const nextTasks = () => openTasks().map((t, i) => [t, taskPct(t), i]).sort((a, b) => b[1] - a[1] || a[2] - b[2]).slice(0, 3).map((x) => x[0]);
+  const taskRow = (t) => `<div class="m ${state.tasks[t.id] ? 'done' : ''}"><span>${state.tasks[t.id] ? '✔' : '○'} ${t.text} <em class="reward">+${t.coins}</em></span>`
+    + `<span class="mbar"><i style="width:${state.tasks[t.id] ? 100 : taskPct(t)}%"></i></span></div>`;
+
   function renderTracker() {
     const lv = levelProgress(state.xp);
+    const done = myTasks.length - openTasks().length;
     tracker.innerHTML = `<b>Lv ${lv.level}</b> <span class="xpbar"><i style="width:${Math.round(lv.ratio * 100)}%"></i></span>`
-      + state.daily.missions.map((m) => `<div class="m ${m.done ? 'done' : ''}"><span>${m.done ? '✔' : '○'} ${label(m)}</span>`
-        + `<span class="mbar"><i style="width:${m.done ? 100 : pct(m)}%"></i></span></div>`).join('');
+      + `<div class="coins-line"><b class="coin-pill">${wallet.coins} coins</b> <span>Tasks ${done}/${myTasks.length}</span></div>`
+      + nextTasks().map(taskRow).join('');
   }
 
   function renderPanel() {
@@ -132,7 +146,10 @@ export function createProgress({ faction, role, tutorial = false }) {
     panel.innerHTML = `
       <h3>Level ${lv.level} <small>${state.xp} XP · ${lv.need - lv.into} to the next level</small></h3>
       <div class="xpbar big"><i style="width:${Math.round(lv.ratio * 100)}%"></i></div>
-      <h4>Today's missions <small>(new ones tomorrow · +${XP.mission} XP each)</small></h4>
+      <p><b class="coin-pill">${wallet.coins} coins</b> Spend them in the shop and at the ice-cream van.</p>
+      <h4>Tasks <small>${myTasks.length - openTasks().length}/${myTasks.length} done · each pays coins once</small></h4>
+      <div class="task-list">${[...openTasks(), ...myTasks.filter((t) => state.tasks[t.id])].map(taskRow).join('')}</div>
+      <h4>Today's missions <small>(new ones tomorrow · +${COINS.mission} coins and +${XP.mission} XP each)</small></h4>
       ${state.daily.missions.map((m) => `<div class="m ${m.done ? 'done' : ''}"><span>${m.done ? '✔' : '○'} ${label(m)}</span><span class="mbar"><i style="width:${m.done ? 100 : pct(m)}%"></i></span></div>`).join('')}
       <h4>Today's top players <small>(live)</small></h4>
       ${board.length ? board.map(([n, f, pts], i) => `<div class="b"><span>${i + 1}. <i style="background:${colour(f)}"></i>${escapeHtml(n)}</span><b>${pts}</b></div>`).join('') : '<p class="muted">Nobody has scored yet today. Knock-outs, holding the route, tags, treatments and photos all count.</p>'}
@@ -154,7 +171,10 @@ export function createProgress({ faction, role, tutorial = false }) {
     state.xp += n;
     const after = levelFor(state.xp);
     if (why) toast(`<b>+${n} XP</b> ${why}`);
-    if (after > before) toast(`<b>Level ${after}!</b> You are getting known on the square`, 'level');
+    if (after > before) {
+      toast(`<b>Level ${after}!</b> You are getting known on the square · +${COINS.level} coins`, 'level');
+      wallet.addCoins(COINS.level);
+    }
   }
 
   function checkBadges() {
@@ -171,23 +191,42 @@ export function createProgress({ faction, role, tutorial = false }) {
   // ---------------------------------------------------------------- events
   // Count it for the missions and the totals. amount = occurrences (or seconds for time-based ones).
   function add(ev, amount = 1) {
-    if (ev in state.counts) state.counts[ev] += amount;
+    state.counts[ev] = (state.counts[ev] || 0) + amount;
     for (const m of state.daily.missions) {
       const def = missionDef(m.id);
       if (m.done || def.ev !== ev) continue;
       m.p = Math.min(def.goal, m.p + amount);
       if (m.p >= def.goal) {
         m.done = true;
-        toast(`✔ <b>Mission complete</b> ${label(m)}`, 'mission');
+        toast(`✔ <b>Mission complete</b> ${label(m)} · +${COINS.mission} coins`, 'mission');
+        wallet.addCoins(COINS.mission);
         addXp(XP.mission);
       }
+    }
+    checkTasks();
+  }
+
+  function checkTasks() {
+    for (const t of myTasks) {
+      if (state.tasks[t.id] || taskCount(t) < t.goal) continue;
+      state.tasks[t.id] = Date.now();
+      wallet.addCoins(t.coins);
+      toast(`🪙 <b>Task done: +${t.coins} coins</b> ${t.text}`, 'mission');
     }
   }
 
   function event(type, amount = 1) {
-    if (type === 'tutorial') { checkBadges(); save(); refresh(); return; }
-    if (type === 'win') addXp(XP.win, 'Your side won the day');
-    else if (type === 'ko') {
+    if (type === 'tutorial') { state.counts.tutorial = 1; checkTasks(); checkBadges(); save(); refresh(); return; }
+    if (type === 'spot') { // amount = which fight circle (0-4): counted once each
+      if (!state.spots.includes(amount)) { state.spots.push(amount); checkTasks(); save(); refresh(); }
+      return;
+    }
+    if (type === 'win') {
+      addXp(XP.win, 'Your side won the day');
+      wallet.addCoins(COINS.win);
+      add('win');
+    } else if (type === 'ko') {
+      add('kos');
       state.counts.peaceBest = Math.max(state.counts.peaceBest, peaceRun);
       peaceRun = 0;
       for (const m of state.daily.missions) if (m.id === 'peace' && !m.done) m.p = 0; // violence resets the peaceful streak
@@ -212,6 +251,8 @@ export function createProgress({ faction, role, tutorial = false }) {
     add('peace', whole);
     if (ctx.inZone) add('hold', whole);
     if (ctx.inEvent) add('rally', whole);
+    // Time-based tasks (in seconds): only while that is really happening.
+    for (const ev of ['lineHold', 'lineBack', 'lineAdvance', 'drive', 'gunner', 'spray', 'escort', 'curfew']) if (ctx[ev]) add(ev, whole);
     checkBadges();
     const now = performance.now();
     if (now - lastSave > 10000) { lastSave = now; save(); }
@@ -229,6 +270,8 @@ export function createProgress({ faction, role, tutorial = false }) {
   }
   tracker.addEventListener('click', () => toggle());
 
+  if (loadProfile().tutorialDone || tutorial) state.counts.tutorial = 1;
+  checkTasks(); // tasks already reached by what you did before (counts are kept)
   refresh();
   checkBadges();
   save();
@@ -237,6 +280,6 @@ export function createProgress({ faction, role, tutorial = false }) {
     event, tick, setBoard, toggle,
     get state() { return state; },
     show(on) { tracker.style.display = on ? '' : 'none'; if (!on) panel.hidden = true; },
-    dispose() { save(); tracker.remove(); stack.remove(); panel.remove(); },
+    dispose() { save(); offCoins(); tracker.remove(); stack.remove(); panel.remove(); },
   };
 }

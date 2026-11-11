@@ -177,6 +177,19 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
   weaponPivot.position.set(0, -0.6, 0);
   weaponPivot.rotation.x = 1.25; // points forward/up when the arm hangs down
   arms[0].add(weaponPivot);
+  // An ice cream cone (shown while eating one from the van, instead of the weapon).
+  const iceCream = new THREE.Group();
+  const coneMesh = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 10), mat(0xd9a45b));
+  coneMesh.rotation.x = Math.PI;
+  coneMesh.position.y = 0.1;
+  iceCream.add(coneMesh);
+  for (const [c, y] of [[0xf6b8c8, 0.22], [0xa8e6cf, 0.3]]) {
+    const scoop = new THREE.Mesh(new THREE.SphereGeometry(0.065, 10, 8), mat(c));
+    scoop.position.y = y;
+    iceCream.add(scoop);
+  }
+  iceCream.visible = false;
+  weaponPivot.add(iceCream);
   const weapons = [];
   // A long French baguette: golden crust with diagonal cuts.
   const baguette = new THREE.Group();
@@ -272,7 +285,7 @@ export function createPlayerMesh(name, faction, isLocal = false, slogan = '', is
   const bodyMaterial = torsoMesh.material;
   if (!bodyMaterial.emissive) bodyMaterial.emissive = new THREE.Color(0);
 
-  group.userData.parts = { pose, torso, head, legs, arms, weaponPivot, weapons, shield, placard, stars, label, bubble, bodyMaterial, old };
+  group.userData.parts = { pose, torso, head, legs, arms, weaponPivot, weapons, iceCream, shield, placard, stars, label, bubble, bodyMaterial, old };
   group.userData.dispose = () => {
     label.element.remove();
     bubble.element.remove();

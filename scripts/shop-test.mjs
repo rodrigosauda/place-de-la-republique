@@ -1,4 +1,5 @@
-// Shop tests: checkout, wallet, ownership enforcement on JOIN and LOOK.
+// Shop tests: the (switched-off) checkout endpoints still answer, and since the game is free the server
+// accepts any valid item on JOIN and LOOK.
 const ROOM = 'shop' + Math.floor(Math.random() * 1e6);
 const BASE = process.env.BASE || 'localhost:8787';
 const SEC = process.env.BASE ? 's' : '';
@@ -39,29 +40,31 @@ check('checkout ok in test mode', r.s === 200 && r.j.ok && r.j.test, JSON.string
 const code = r.j.code;
 check('code format', /^RPR(-[A-Z0-9]{4}){4}$/.test(code), code);
 check('owns the cap', r.j.owned.includes('hat:phrygian') && r.j.owned.length === 1);
-check('would-charge is the price', r.j.wouldCharge === 100, String(r.j.wouldCharge));
+check('would-charge is the price (coins)', r.j.wouldCharge === 200, String(r.j.wouldCharge));
 r = await get(`/shop/wallet?code=${encodeURIComponent(code.toLowerCase())}`);
 check('wallet lookup (lowercase ok)', r.s === 200 && r.j.owned.length === 1);
 r = await post('/shop/checkout', { items: ['bundle:founder'], code });
 check('bundle adds to the same wallet', r.j.code === code && ['flair:founder', 'trail:gold', 'placard:gold', 'back:cape', 'hat:phrygian'].every((k) => r.j.owned.includes(k)), r.j.owned?.join());
-check('bundle price counted', r.j.wouldCharge === 350, String(r.j.wouldCharge));
+check('bundle price counted (coins)', r.j.wouldCharge === 700, String(r.j.wouldCharge));
 r = await get('/shop/wallet?code=RPR-AAAA-AAAA-AAAA-AAAA');
 check('unknown code = empty wallet', r.s === 200 && r.j.owned.length === 0);
 
 // 3. server enforcement
 const a = await client({ t: 'j', n: 'NoWallet', f: 'g', s: 'x', l: withLook({ [HAT]: 5, [TRAIL]: 1, [FLAIR]: 3 }) });
-check('join without wallet: premium hat dropped', mine(a)?.[HAT] === 4, JSON.stringify(mine(a)));
-check('join without wallet: trail and flair dropped', mine(a)?.[TRAIL] === 0 && mine(a)?.[FLAIR] === 0);
+// The game is free now (PREMIUM_ENFORCED = false): coins and unlocked items live in the browser,
+// so the server lets any valid item through.
+check('free game: premium hat allowed without a wallet', mine(a)?.[HAT] === 5, JSON.stringify(mine(a)));
+check('free game: trail and flair allowed without a wallet', mine(a)?.[TRAIL] === 1 && mine(a)?.[FLAIR] === 3);
 const b = await client({ t: 'j', n: 'Owner', f: 'g', s: 'x', l: withLook({ [HAT]: 5, [TRAIL]: 1, [FLAIR]: 3 }), ow: code });
 check('join with wallet: owned hat kept', mine(b)?.[HAT] === 5);
-check('join with wallet: owned flair kept, unowned trail dropped', mine(b)?.[FLAIR] === 3 && mine(b)?.[TRAIL] === 0, JSON.stringify(mine(b)));
+check('join with wallet: flair and trail kept', mine(b)?.[FLAIR] === 3 && mine(b)?.[TRAIL] === 1, JSON.stringify(mine(b)));
 const c2 = await client({ t: 'j', n: 'Forger', f: 'g', s: 'x', l: withLook({ [HAT]: 5 }), ow: 'RPR-AAAA-AAAA-AAAA-AAAA' });
-check('made-up code gives nothing', mine(c2)?.[HAT] === 4);
+check('made-up code: still allowed (free game)', mine(c2)?.[HAT] === 5);
 
 // 4. LOOK after buying mid-game (fresh lookup, not the cached empty wallet)
 a.send({ t: 'L', l: withLook({ [TRAIL]: 2 }), ow: '' });
 await sleep(500);
-check('LOOK without wallet: trail dropped', mine(a)?.[TRAIL] === 0);
+check('LOOK without wallet: trail allowed (free game)', mine(a)?.[TRAIL] !== undefined);
 const buy = await post('/shop/checkout', { items: ['trail:feathers'] });
 a.send({ t: 'L', l: withLook({ [TRAIL]: 2 }), ow: buy.j.code });
 await sleep(700);

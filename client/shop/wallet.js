@@ -1,63 +1,67 @@
 // client/shop/wallet.js
-// Which premium items this browser owns. No accounts: a secret wallet code (RPR-XXXX-XXXX-XXXX-XXXX)
-// is shown after the first purchase and kept in localStorage. Typing it on another device restores the items.
-// The server checks ownership again on every join / outfit change (worker/shop.js), so this is only for the UI.
+// The game is free: you earn COINS by doing tasks (client/ui/progress.js) and spend them in the shop
+// (cosmetic items) and at the ice-cream van. Coins and the items you unlocked are kept in this browser
+// (localStorage). Everything is cosmetic, so there is nothing to protect on the server.
 
-import { normalizeCode } from '../../shared/shop.js';
-import { sanitizeLook, lookToArray } from '../../shared/looks.js';
+import { sanitizeLook, lookToArray, defaultLook, itemKey, SHOP_SLOTS } from '../../shared/looks.js';
+import { productById, totalPrice } from '../../shared/shop.js';
+import { COINS } from '../../shared/tasks.js';
 
-const KEY = 'rpr_wallet';
-let code = '';
+const KEY = 'rpr_coins';
+let coins = COINS.start;  // a small welcome gift so the shop isn't empty-handed on day one
 let owned = new Set();
 const listeners = new Set();
-try { code = normalizeCode(localStorage.getItem(KEY)) || ''; } catch { /* storage blocked */ }
+try {
+  const s = JSON.parse(localStorage.getItem(KEY));
+  if (s) { coins = Math.max(0, Math.floor(Number(s.coins) || 0)); owned = new Set(Array.isArray(s.owned) ? s.owned : []); }
+} catch { /* storage blocked: you start fresh each time */ }
 
 const notify = () => listeners.forEach((fn) => fn());
-const save = () => { try { localStorage.setItem(KEY, code); } catch { /* ignore */ } };
-
-async function call(url, options) {
-  const res = await fetch(url, options);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Shop error (${res.status})`);
-  return data;
-}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ coins, owned: [...owned] })); } catch { /* ignore */ } };
+save();
 
 export const wallet = {
-  get code() { return code; },
+  get coins() { return coins; },
   get owned() { return owned; },
   onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+  refresh() {},
 
-  async refresh() {
-    if (!code) return;
-    try { owned = new Set((await call(`/shop/wallet?code=${encodeURIComponent(code)}`)).owned); notify(); } catch { /* offline: keep what we know */ }
+  addCoins(n) {
+    if (!(n > 0)) return;
+    coins += Math.floor(n);
+    save();
+    notify();
+  },
+  // Spend coins on something that is not an item (an ice cream). Returns false if you can't afford it.
+  spend(n) {
+    if (coins < n) return false;
+    coins -= n;
+    save();
+    notify();
+    return true;
   },
 
-  // productIds: ['hat:phrygian', 'bundle:founder', ...]. In test mode nothing is charged.
+  // productIds: ['hat:phrygian', 'bundle:founder', ...]. Items you already own are free.
   async buy(productIds) {
-    const data = await call('/shop/checkout', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: productIds, code: code || undefined }),
-    });
-    code = data.code; save();
-    owned = new Set(data.owned);
+    const price = totalPrice(productIds, owned);
+    if (price > coins) throw new Error(`You need ${price - coins} more coins. Do tasks (P) to earn them.`);
+    coins -= price;
+    for (const id of productIds) for (const k of productById(id)?.grants ?? []) owned.add(k);
+    save();
     notify();
-    return data;
+    return { ok: true, price };
   },
 
-  async restore(input) {
-    const c = normalizeCode(input);
-    if (!c) throw new Error('That code does not look right. It has 16 letters and digits.');
-    const data = await call(`/shop/wallet?code=${encodeURIComponent(c)}`);
-    if (!data.owned.length) throw new Error('No items found for that code.');
-    code = c; save();
-    owned = new Set(data.owned);
-    notify();
-  },
-
-  // A look with everything you do not own swapped back to the default (what the server would do).
+  // A look with everything you have not unlocked swapped back to the default.
   cleanLook(faction, look) {
-    return sanitizeLook(lookToArray(look), faction, owned);
+    const clean = sanitizeLook(lookToArray(look), faction, owned);
+    const def = defaultLook(faction);
+    for (const slot of SHOP_SLOTS) {
+      const key = itemKey(slot, clean[slot]);
+      if (key && !owned.has(key)) clean[slot] = def[slot];
+    }
+    return clean;
   },
 };
 
-wallet.ready = wallet.refresh(); // resolves when we know what this browser owns
+wallet.ready = Promise.resolve();

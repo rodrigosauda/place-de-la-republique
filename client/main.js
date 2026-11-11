@@ -11,9 +11,11 @@ import * as THREE from 'three';
 import {
   MSG, TICK_MS, SPAWNS, VEHICLE_ENTER_DISTANCE, FACTIONS, MAX_HP, EMOTES, WEAPONS,
   GRAB_RANGE, THROW_SPEED, TAG_RANGE, EMOTE_LIST, round2, gameMinutes,
-  GAS_COOLDOWN_MS, GAS_RANGE, inSafeZone, inPlaza, TRUCK_SPAWN, isCurfew, ROLES, badgeText, OPINION,
+  GAS_COOLDOWN_MS, GAS_RANGE, inSafeZone, inPlaza, TRUCK_SPAWN, isCurfew, ROLES, badgeText, OPINION, ICE_CREAM,
 } from '../shared/constants.js';
-import { objectiveAt, phaseAt, newsAt, eventAt, currentScenario, scenarioLabel } from '../shared/timeline.js';
+import { ICE_CREAM_COST } from '../shared/tasks.js';
+import { buildIceCreamVan } from './scene/iceCreamVan.js';
+import { objectiveAt, phaseAt, newsAt, eventAt, currentScenario, scenarioLabel, FIGHT_SPOTS } from '../shared/timeline.js';
 import { recordVisit, recordSummary, loadProfile, updateProfile, badgeOf } from './profile.js';
 import { createTutorial } from './ui/tutorial.js';
 import { createProgress } from './ui/progress.js';
@@ -74,6 +76,7 @@ async function start() {
   const impacts = createImpacts(scene); // crumbs, feathers, sparks and stars when something is hit
   let hitStopUntil = 0;                  // a few frames of freeze on a solid hit
   const bases = buildBases(scene, physics); // police buses + café: where each side starts
+  const iceVan = buildIceCreamVan(scene, physics); // the ice-cream van (no fighting around it)
   mergeStaticMeshes(scene); // glue the static city together = much faster rendering
   // Everything static is now merged: these are the walls you can spray tags on.
   const wallMeshes = scene.children.filter((o) => o.isMesh && !o.isInstancedMesh && (o.userData.wall || !o.userData.noMerge));
@@ -257,6 +260,11 @@ async function start() {
     const [x, y, z, r, owner, spraying, water, gunner, aim, stalled, painted] = msg.v;
     setTruckOwner(owner, gunner);
     truck.water = water ?? truck.water;
+    if (local && local.faction === 'g' && !local.isKO) {
+      const near = local.position.distanceTo(truck.position);
+      if (stalled === 1 && !truck.stalled && near < 5) progress?.event('truckStop');
+      if (painted === 1 && !truck.painted && near < 6 && performance.now() - lastAttackAt < 1200) progress?.event('paint');
+    }
     truck.stalled = stalled === 1;
     truck.painted = painted === 1;
     // Only follow the server's truck when we are NOT the driver.
@@ -314,17 +322,20 @@ async function start() {
       local.fx.swing();
       const d = GAS_RANGE * 0.8;
       net.send({ t: MSG.GAS, back: can.id, p: [round2(local.position.x + Math.sin(cam.aimYaw) * d), round2(local.position.z + Math.cos(cam.aimYaw) * d)] });
+      progress?.event('gasBack');
       return;
     }
     const i = props.nearest(local.position, GRAB_RANGE);
-    if (i >= 0) net.send({ t: MSG.GRAB, i });
+    if (i >= 0) { net.send({ t: MSG.GRAB, i }); progress?.event('grab'); }
   }
   function throwProp() {
+    if (eating()) return;
     const i = local.carrying;
     local.facing = cam.aimYaw; // throw where the camera looks
     const fx = Math.sin(local.facing), fz = Math.cos(local.facing);
     const v = [round2(fx * THROW_SPEED), 3, round2(fz * THROW_SPEED)]; // fairly flat arc: hits people ~3-14 m away
     net.send({ t: MSG.THROW, i, v });
+    progress?.event('throw');
   }
   net.onScore = (s) => {
     score = { g: s.g, c: s.c };
@@ -439,7 +450,7 @@ async function start() {
   let gasHintUntil = 0;
   let safeHintUntil = 0;
   function throwGas() {
-    if (!local || local.faction !== 'c' || local.inVehicle || local.isKO || !net.myId) return;
+    if (!local || local.faction !== 'c' || local.inVehicle || local.isKO || !net.myId || eating()) return;
     if (inSafeZone(local.position.x, local.position.z)) { safeHintUntil = performance.now() + 2000; return; }
     const now = performance.now();
     if (now - lastGas < GAS_COOLDOWN_MS) { gasHintUntil = now + 1500; return; }
@@ -449,6 +460,7 @@ async function start() {
     const d = GAS_RANGE * 0.8;
     const x = local.position.x + Math.sin(cam.aimYaw) * d, z = local.position.z + Math.cos(cam.aimYaw) * d;
     net.send({ t: MSG.GAS, p: [round2(x), round2(z)] });
+    progress?.event('gas');
   }
 
   // ------------------------------------------------------ combat events
@@ -508,14 +520,45 @@ async function start() {
   };
 
   let lastSplash = 0;
-  net.onPush = ({ k }) => {
+  let lastSoaked = 0;
+  net.onPush = ({ k, s }) => {
     local?.onPush(k[0], k[1]);
+    if (!s && performance.now() - lastSoaked > 2500) { lastSoaked = performance.now(); progress?.event('soaked'); } // the water jet (s = shoved by the truck)
     if (performance.now() - lastSplash > 300) { lastSplash = performance.now(); sfx.splash(); }
   };
 
+  // ------------------------------------------------------ the ice-cream van
+  let eatingUntil = 0;
+  let iceHintUntil = 0, iceHint = '';
+  const nearVan = () => local && Math.hypot(local.position.x - ICE_CREAM.x, local.position.z - ICE_CREAM.z) < ICE_CREAM.r;
+  function buyIceCream() {
+    if (!local || local.inVehicle || local.isKO || !net.myId) return;
+    if (wallet.coins < ICE_CREAM_COST) { iceHint = `An ice cream costs ${ICE_CREAM_COST} coins: do tasks (P) to earn them.`; iceHintUntil = performance.now() + 2500; return; }
+    net.send({ t: MSG.ICE });
+  }
+  net.onEat = ({ id, ok, hp, ms, wait }) => {
+    if (!ok) { iceHint = `One ice cream at a time: come back in ${wait} s.`; iceHintUntil = performance.now() + 2500; return; }
+    const who = id === net.myId ? local : remotes.get(id);
+    if (!who) return;
+    who.fx.setEating(true);
+    setTimeout(() => who.fx?.setEating(false), ms);
+    if (id === net.myId) {
+      wallet.spend(ICE_CREAM_COST);
+      eatingUntil = performance.now() + ms;
+      local.hp = hp;
+      progress?.event('icecream');
+      showBonk(scene, local.position, '+1 ♥');
+      sfx.pop();
+    } else who.setHp?.(hp);
+  };
+  const eating = () => performance.now() < eatingUntil;
+
   // F key or a quick left click = swing.
+  let lastAttackAt = 0;
   function attack() {
     if (!local || !net.myId) return;
+    if (eating()) { iceHint = 'You are eating an ice cream: no fighting until it is finished.'; iceHintUntil = performance.now() + 1500; return; }
+    lastAttackAt = performance.now();
     if (inSafeZone(local.position.x, local.position.z)) { safeHintUntil = performance.now() + 2000; return; } // no fighting in a base
     if (local.carrying >= 0) return throwProp(); // hands full: click throws the prop
     if (!local.tryAttack(performance.now(), cam.aimYaw)) return; // cooldown, KO, shield or driving
@@ -539,6 +582,7 @@ async function start() {
     if (!local || local.inVehicle || local.isKO) return;
     local.fx.playEmote(i);
     net.send({ t: MSG.EMOTE, e: i });
+    progress?.event('emote');
   }
 
   // Spray your name on the wall the camera is pointing at.
@@ -806,6 +850,7 @@ async function start() {
     updateMinimap(minutes);
     updateRiot(dt, minutes, now);
     bases.update(now / 1000);
+    iceVan.update(now / 1000);
     impacts.update(rawDt > 0.1 ? 0.016 : rawDt);
     emitTrails();
 
@@ -817,7 +862,8 @@ async function start() {
 
   function handleKeys(driving) {
     // E = enter / exit the truck
-    if (input.pressed('KeyE')) {
+    if (input.pressed('KeyE') && !driving && nearVan()) buyIceCream();
+    else if (input.pressed('KeyE')) {
       if (driving) exitTruck();
       else if (!local.isKO && local.position.distanceTo(truck.position) < VEHICLE_ENTER_DISTANCE && (!truck.ownerId || !truck.gunnerId)) {
         net.send({ t: MSG.ENTER }); // wait for the server's answer (MSG.VEHICLE); protesters get told why not
@@ -837,7 +883,7 @@ async function start() {
     if (input.pressed('KeyP')) progress?.toggle();
     // 1-4 = chants / emotes
     ['Digit1', 'Digit2', 'Digit3', 'Digit4'].forEach((code, i) => {
-      if (input.pressed(code)) { net.send({ t: MSG.CHAT, m: EMOTES[local.faction][i] }); if (i === 0) tutorial?.notify('chant'); }
+      if (input.pressed(code)) { net.send({ t: MSG.CHAT, m: EMOTES[local.faction][i] }); progress?.event('chant'); if (i === 0) tutorial?.notify('chant'); }
     });
   }
 
@@ -895,6 +941,9 @@ async function start() {
     wasCurfew = curfew;
 
     if (local.isKO) hud.setHint('');
+    else if (performance.now() < iceHintUntil) hud.setHint(iceHint);
+    else if (eating()) hud.setHint('Eating your ice cream… (no fighting meanwhile)');
+    else if (nearVan()) hud.setHint(`E: buy an ice cream (${ICE_CREAM_COST} coins, you have ${wallet.coins}): +1 heart · no fighting around the van`);
     else if (local.inVehicle && truck.stalled && seat === 'driver') hud.setHint('STOPPED: protesters or a barricade are blocking the truck. Hose them away!');
     else if (local.inVehicle) {
       const water = controlsCannon() ? ' · hold click or Space: water' : '';
@@ -950,7 +999,31 @@ async function start() {
     if (tutorial) tutorial.update(local.position, obj ? obj.zone : null);
     if (progress && !local.isKO) {
       const inZone = !!obj && (obj.zone.plaza ? inPlaza(local.position.x, local.position.z) : dist <= obj.zone.r);
-      progress.tick(dt, { inZone, inEvent: !!ev && evDist <= ev.zone.r });
+      // Where am I relative to the police line? (for the line tasks)
+      const L = riot.line, ls = riot.lineState;
+      let lineHold = false, lineBack = false, lineAdvance = false;
+      if (L && L.active > 0.5 && ls !== null && !local.inVehicle) {
+        const dx = local.position.x - L.x, dz = local.position.z - L.z;
+        const along = dx * Math.cos(L.a) + dz * Math.sin(L.a), front = dx * L.fx + dz * L.fz;
+        if (Math.abs(along) < L.len / 2 + 1) {
+          if (local.faction === 'g' && front > 0 && front < 5) { lineHold = ls === 0; lineBack = ls === -1; }
+          if (local.faction === 'c' && front > -4 && front < 1.5) lineAdvance = ls === 1;
+        }
+      }
+      const police = local.faction === 'c';
+      const nearTruck = local.position.distanceTo(truck.position);
+      progress.tick(dt, {
+        inZone, inEvent: !!ev && evDist <= ev.zone.r, lineHold, lineBack, lineAdvance,
+        drive: seat === 'driver' && Math.abs(truck.speed) > 0.5,
+        gunner: seat === 'gunner',
+        spray: controlsCannon() && truck.spraying,
+        escort: police && !local.inVehicle && truck.spraying && nearTruck < 10,
+        curfew: police && isCurfew(minutes) && inPlaza(local.position.x, local.position.z),
+      });
+      // Fight circles you have been to (task: visit all 5).
+      FIGHT_SPOTS.forEach((S, k) => {
+        if (Math.hypot(local.position.x - S.x, local.position.z - S.z) < (S.ring ? 20 : S.r + 3)) progress.event('spot', k);
+      });
     }
 
     // Tear gas: slows you, hazes the screen, makes you cough. Masks help (outfit editor!).

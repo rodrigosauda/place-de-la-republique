@@ -20,7 +20,7 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import {
-  MSG, TICK_MS, TICK_RATE, FACTIONS, DEFAULT_FACTION, SPAWNS, TRUCK_SPAWN, inSafeZone,
+  MSG, TICK_MS, TICK_RATE, FACTIONS, DEFAULT_FACTION, SPAWNS, TRUCK_SPAWN, inSafeZone, ICE_CREAM, ICE_EAT_MS, ICE_COOLDOWN_MS,
   VEHICLE_ENTER_DISTANCE, WORLD, MAX_PLAYERS, MAX_NAME_LENGTH,
   MAX_SLOGAN_LENGTH, MAX_CHAT_LENGTH, CHAT_COOLDOWN_MS, MAX_MESSAGES_PER_SECOND,
   MAX_MESSAGE_BYTES, MAX_HP, KO_MS, FRIENDLY_FIRE, WEAPONS, DEFAULT_WEAPON,
@@ -240,6 +240,7 @@ export class GameRoom extends DurableObject {
       case MSG.GAS: return p && this.handleGas(p, msg);
       case MSG.CROWD: return p && this.handleCrowdHit(p, msg);
       case MSG.ABILITY: return p && this.handleAbility(ws, p);
+      case MSG.ICE: return p && this.handleIceCream(ws, p);
     }
   }
 
@@ -382,6 +383,7 @@ export class GameRoom extends DurableObject {
     const now = Date.now();
     const weapon = WEAPONS[attacker.w] || WEAPONS[0];
     if (attacker.hp <= 0 || attacker.v || attacker.b) return;   // KO'd, driving or blocking
+    if (now < (attacker.eat || 0)) return;                      // eating an ice cream: no fighting
     if (inSafeZone(attacker.x, attacker.z)) return;             // no fighting inside a base
     if (this.isCarrying(attacker.id)) return;                   // hands full
     if (now - attacker.at < weapon.cooldown - 50) return;       // too fast (50 ms lag tolerance)
@@ -485,6 +487,7 @@ export class GameRoom extends DurableObject {
   handleThrow(p, msg) {
     const i = msg.i;
     if (this.carried.get(i) !== p.id) return;
+    if (Date.now() < (p.eat || 0)) return; // eating an ice cream: hands busy
     if (!Array.isArray(msg.v) || msg.v.length !== 3 || !msg.v.every(Number.isFinite)) return;
     let [vx, vy, vz] = msg.v;
     const speed = Math.hypot(vx, vy, vz);
@@ -537,7 +540,7 @@ export class GameRoom extends DurableObject {
   // Tear gas. Police throw it (H); protesters can pick up a fresh canister and throw it back (G).
   handleGas(p, msg) {
     const now = Date.now();
-    if (p.hp <= 0 || p.v || inSafeZone(p.x, p.z)) return; // no tear gas from inside a base
+    if (p.hp <= 0 || p.v || inSafeZone(p.x, p.z) || now < (p.eat || 0)) return; // no tear gas from a safe zone or while eating
     if (!Array.isArray(msg.p) || msg.p.length !== 2 || !msg.p.every(Number.isFinite)) return;
     let removed = 0;
     if (p.f === 'g') {
@@ -1446,6 +1449,20 @@ export class GameRoom extends DurableObject {
   // ------------------------------------------------------------------------
   // Roles (R key) and events
   // ------------------------------------------------------------------------
+  // An ice cream at the van: +1 heart (one more than the normal maximum if you are already fine),
+  // and you can't hit anyone while you eat it. The coins are paid on the client (the game is free).
+  handleIceCream(ws, p) {
+    const now = Date.now();
+    if (p.hp <= 0 || p.v) return;
+    if (Math.hypot(p.x - ICE_CREAM.x, p.z - ICE_CREAM.z) > ICE_CREAM.r + 2) return;
+    if (now < (p.ic || 0)) { this.send(ws, { t: MSG.EAT_OUT, id: p.id, ok: 0, wait: Math.ceil((p.ic - now) / 1000) }); return; }
+    p.ic = now + ICE_COOLDOWN_MS;
+    p.eat = now + ICE_EAT_MS;
+    p.hp = Math.min(MAX_HP + 1, p.hp + 1);
+    ws.serializeAttachment(p);
+    this.broadcast({ t: MSG.EAT_OUT, id: p.id, ok: 1, hp: p.hp, ms: ICE_EAT_MS });
+  }
+
   handleAbility(ws, p) {
     const role = ROLES[p.ro];
     const now = Date.now();

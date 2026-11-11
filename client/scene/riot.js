@@ -23,7 +23,22 @@ const LINE_COPS = 20;   // officers in the shield line
 const FIGHT_COPS = 36;  // officers brawling in the middle
 const FIGHTERS = 36;    // protesters brawling (each paired with one officer)
 const FRONT_ROW = 14;   // protesters facing the police shield line
-const N_POLICE = LINE_COPS + FIGHT_COPS;
+const PATROL_COPS = 12; // 3 squads of 4 walking round the square (so protesters always have someone to fight)
+const N_POLICE = LINE_COPS + FIGHT_COPS + PATROL_COPS;
+// A loop round the open square (between the fight circles and the tree rows).
+const LOOP = [[-82, -28], [-38, -26], [-5, -37], [40, -38], [82, -26], [95, 2], [55, 14], [12, 17], [-35, 15], [-88, 6]];
+const LOOP_LEN = LOOP.reduce((sum, p, i) => sum + Math.hypot(LOOP[(i + 1) % LOOP.length][0] - p[0], LOOP[(i + 1) % LOOP.length][1] - p[1]), 0);
+// The point `d` metres along the loop, and the direction of travel there.
+function loopAt(d) {
+  d = ((d % LOOP_LEN) + LOOP_LEN) % LOOP_LEN;
+  for (let i = 0; i < LOOP.length; i++) {
+    const [ax, az] = LOOP[i], [bx, bz] = LOOP[(i + 1) % LOOP.length];
+    const len = Math.hypot(bx - ax, bz - az);
+    if (d <= len) { const u = d / len; return { x: ax + (bx - ax) * u, z: az + (bz - az) * u, dir: Math.atan2(bx - ax, bz - az) }; }
+    d -= len;
+  }
+  return { x: LOOP[0][0], z: LOOP[0][1], dir: 0 };
+}
 const ROWS = 2;
 const KO_TIME = 4000;
 const TOP_COLORS = [0x22304f, 0x1d1d1f, 0xecebe6, 0x7c8088, 0xb3262e, 0x3c6e47, 0x4b6e9c, 0x5a3e2b];
@@ -431,6 +446,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
   return {
     state,
     get line() { return line; }, // for debugging / tests: where the police line stands now
+    get extras() { return { crowd, police }; }, // for debugging / tests
     setTruck(info) { truckInfo = info; },
     addGas,
     throwGas,
@@ -493,7 +509,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
     // An extra was hit (by anyone, relayed by the server): they fall over for a few seconds.
     knockDown(i, kx, kz) {
       const a = i >= 1000 ? police[i - 1000] : crowd[i]; // >= 1000 = a police extra
-      if (!a || !a.visible) return;
+      if (!a || !a.visible || a.koUntil > Date.now()) return; // already down (e.g. our own hit, shown at once)
       a.koUntil = Date.now() + KO_TIME;
       a.kx = kx * 4;
       a.kz = kz * 4;
@@ -519,7 +535,7 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
       list.forEach((a, i) => {
         if (!a.visible || a.koUntil > Date.now()) return;
         const dx = a.x - x, dz = a.z - z, d = Math.hypot(dx, dz);
-        if (d < bd && (d < 0.3 || (dx * fx + dz * fz) / d > 0.35)) { bd = d; best = myFaction === 'g' ? 1000 + i : i; }
+        if (d < bd && (d < 0.6 || (dx * fx + dz * fz) / d > 0.2)) { bd = d; best = myFaction === 'g' ? 1000 + i : i; }
       });
       return best;
     },
@@ -612,6 +628,14 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
           target = { x: line.x + lc * off + line.fx * dist, z: line.z + ls * off + line.fz * dist };
           target.face = Math.atan2(-line.fx, -line.fz);
           if (front % 3 === 0) { target.fight = true; target.phi = a.phase; }
+        } else if (i % 5 === 2 && !BANNER_PAIRS.some((pp) => pp.includes(i))) {
+          // Small groups of protesters walking round the square (the other way from the police patrols),
+          // so there are people everywhere, not only around the fight circles.
+          const group = Math.floor(i / 20), r = seeded(i * 6151 + 9); // ~4 walkers per group
+          const R = loopAt(-tReal * 1.1 + group * 41);
+          const off = (r() - 0.5) * 3, back = r() * 3;
+          target = inPlazaClamp({ x: R.x + Math.cos(R.dir) * off - Math.sin(R.dir) * back, z: R.z - Math.sin(R.dir) * off - Math.cos(R.dir) * back });
+          target.face = R.dir + Math.PI;
         } else {
           // Around the brawl: shouting, surging in and out, waving placards.
           const r = seeded(i * 7919 + 13);
@@ -703,7 +727,9 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         const jump = !ko && !tg.fight && a.moving < 0.2 && Math.sin(tReal * 3 + a.phase * 3) > 0.9 ? 0.18 : 0;
         const lean = !ko && a.moving > 1 ? 0.22 : 0; // lean forward when running
         // Lying on the ground when knocked out (rotated 90° backwards).
-        base.compose(v.set(a.x, (ko ? 0.2 : bob + jump), a.z), q.setFromEuler(e.set(ko ? -Math.PI / 2 : lean, a.rot, 0, 'YXZ')), one.set(a.wide, a.height, a.wide));
+        // Falling over / getting up is a short animation (not a snap).
+        a.kb = (a.kb || 0) + ((ko ? 1 : 0) - (a.kb || 0)) * (1 - Math.exp(-(ko ? 9 : 4) * dt));
+        base.compose(v.set(a.x, 0.2 * a.kb + (bob + jump) * (1 - a.kb), a.z), q.setFromEuler(e.set(-Math.PI / 2 * a.kb + lean * (1 - a.kb), a.rot, 0, 'YXZ')), one.set(a.wide, a.height, a.wide));
         e.order = 'XYZ';
         const raise = a.sign && !tg.fight && !ko; // holding the placard up
         const pump = !tg.fight && !ko && a.moving < 0.2 ? Math.max(0, Math.sin(tReal * 2.4 + a.phase)) * 0.6 : 0;
@@ -806,6 +832,15 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
             tx = p.x; tz = p.z; face = Math.atan2(H.x - tx, H.z - tz);
             c.inLine = false;
           }
+        } else if (i >= LINE_COPS + FIGHT_COPS) {
+          // Patrol squads: 2 x 2 walking round the square at a steady pace.
+          const k = i - LINE_COPS - FIGHT_COPS, squad = Math.floor(k / 4), m = k % 4;
+          const R = loopAt(tReal * 1.3 + squad * (LOOP_LEN / 3) - Math.floor(m / 2) * 1.4);
+          const side = (m % 2 ? 0.7 : -0.7);
+          const spot = inPlazaClamp({ x: R.x + Math.cos(R.dir) * side, z: R.z - Math.sin(R.dir) * side });
+          tx = spot.x; tz = spot.z; face = R.dir;
+          c.hidden = false;
+          c.inLine = false;
         } else {
           // Brawling: opposite the protester of pair (i - LINE_COPS).
           const pr = pairs[i - LINE_COPS];
@@ -845,7 +880,8 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
         if (c.hidden) { for (const k in P) P[k].setMatrixAt(i, HIDDEN); continue; } // out of sight in a street
         const swing = Math.sin(c.stride) * 0.5 * Math.min(1, c.moving);
         const stomp = c.inLine && phase.id === 'clashes' && c.moving < 0.2 ? Math.max(0, Math.sin(tReal * 2 + c.phase)) * 0.04 : 0;
-        base.compose(v.set(c.x, ko ? 0.22 : stomp, c.z), q.setFromEuler(e.set(ko ? -Math.PI / 2 : c.moving > 1 ? 0.2 : 0, c.rot, 0, 'YXZ')), one.set(1.08, 1.02, 1.08));
+        c.kb = (c.kb || 0) + ((ko ? 1 : 0) - (c.kb || 0)) * (1 - Math.exp(-(ko ? 9 : 4) * dt));
+        base.compose(v.set(c.x, 0.22 * c.kb + stomp * (1 - c.kb), c.z), q.setFromEuler(e.set(-Math.PI / 2 * c.kb + (c.moving > 1 ? 0.2 : 0) * (1 - c.kb), c.rot, 0, 'YXZ')), one.set(1.08, 1.02, 1.08));
         e.order = 'XYZ';
         place(P.legL, i, 0.1, 0.86, 0, swing);
         place(P.legR, i, -0.1, 0.86, 0, -swing);

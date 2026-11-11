@@ -566,8 +566,14 @@ async function start() {
     tutorial?.notify('hit');
     const p = local.position;
     // Did we hit one of the background extras? (players and NPCs are judged by the server)
-    const extra = riot.findExtra(p.x, p.z, local.facing, WEAPONS[local.weapon].range + 0.3, local.faction);
-    if (extra >= 0) net.send({ t: MSG.CROWD, i: extra, k: [round2(Math.sin(local.facing)), round2(Math.cos(local.facing))] });
+    const extra = riot.findExtra(p.x, p.z, local.facing, WEAPONS[local.weapon].range + 0.6, local.faction);
+    if (extra >= 0) {
+      const k = [round2(Math.sin(local.facing)), round2(Math.cos(local.facing))];
+      riot.knockDown(extra, k[0], k[1]);          // show it at once on our screen…
+      net.send({ t: MSG.CROWD, i: extra, k });    // …and everyone else's (the server relays it)
+      sfx.bonk?.(1);
+      impacts.burst(new THREE.Vector3(p.x + Math.sin(local.facing) * 1.2, 1, p.z + Math.cos(local.facing) * 1.2), 'hit', 0xd9a45b);
+    }
     net.send({ t: MSG.ATTACK, p: [round2(p.x), round2(p.y), round2(p.z)], r: round2(local.facing) });
   }
   cam.onTap = () => { if (!local?.inVehicle) attack(); };

@@ -4,6 +4,8 @@ A lighthearted browser game: pick **Protesters** (dressed in black, red armbands
 Place de la République in Paris (every building, street, tree and lamp from OpenStreetMap).
 Everything runs on **one Cloudflare Worker** (free plan): static client + a `GameRoom` Durable Object.
 
+**Picking this up on a new computer? Start with [docs/PLAN.md](docs/PLAN.md)**: what is built, what was decided, what to do next.
+
 ## Folder structure
 
 ```
@@ -244,30 +246,15 @@ lowers its resolution by itself if the frame rate stays under about 30 fps (and 
 Rain wets the ground and softens the shadows. Audio is still synthesized (no sound files): crowd murmur, rhythmic chanting,
 distant sirens, helicopter, rain with drips, drum phrases, camera shutter.
 
-## Shop (cosmetic only, test mode)
+## Coins, tasks and the shop (the game is free)
 
-Premium outfit items (hats, faces, back items, Breton top, placards), **footstep trails** (confetti, feathers,
-blue-white-red sparks, gold dust), **name flair** (star, blue-white-red name, gold founder name) and three bundles
-are sold in the **Shop** (start menu button and the Shop button on the bottom bar). Nothing sold ever changes strength
-or fights. Rules:
-
-- **Prices** are in euro cents in `shared/looks.js` (`price`, default 99) and `shared/shop.js` (bundles); the shop window
-  and the checkout use the same numbers.
-- **No accounts.** The first purchase creates a secret wallet code (`RPR-XXXX-XXXX-XXXX-XXXX`) that the shop shows;
-  the browser keeps it in `localStorage` and "Restore items" on another device takes it back. Each code is one tiny
-  Durable Object (`worker/Wallet.js`) that stores the owned item keys (`hat:phrygian`...).
-- **Try before you buy.** You can try a locked item on in the outfit preview. A strip offers to buy it. Locked items are
-  dropped when you play or save, and the **server** drops them too: JOIN and LOOK carry `ow` (the code), `GameRoom`
-  checks it (cached 60 s, always fresh on an outfit change) and `sanitizeLook(..., owned)` resets anything unowned.
-- **Test mode.** `PAYMENT_MODE` is `"test"` in `wrangler.jsonc`: `POST /shop/checkout` grants the items at once and
-  charges nothing (the reply includes `wouldCharge`). With `"live"` the checkout answers 501 until a real provider is
-  wired in `worker/shop.js` (`startLiveCheckout` and a signed `/shop/webhook` that calls `grantItems`; the comments there
-  describe the steps). **Do not switch to live without that**, or nobody can buy; and do not leave test mode on in
-  production once you charge, or everybody gets everything free.
-- **Before charging real money:** imprint, terms, refund policy (EU 14-day right of withdrawal for digital goods),
-  VAT. Stripe Checkout needs you to handle VAT; Lemon Squeezy / Paddle handle it for you.
-- Tests: `node scripts/shop-test.mjs` (local `wrangler dev`, or `BASE=host node ...`): checkout, wallet lookup,
-  JOIN/LOOK with and without a code.
+Everything is free. Players earn **coins** with 50 tasks (`shared/tasks.js`, press **P** in the game), daily missions,
+levels and winning the day, and spend them in the **Shop** (cosmetic items only, prices in coins) and at the
+**ice-cream van** (+1 heart, no fighting while eating, a no-fighting zone around it). Coins and unlocked items are kept
+in the player's browser (`client/shop/wallet.js`); `PREMIUM_ENFORCED = false` in `shared/looks.js`, so the server no
+longer checks ownership. The old real-money checkout (`worker/shop.js`, `worker/Wallet.js`, `PAYMENT_MODE`) is still in
+the code but unused. Tests: `node scripts/shop-test.mjs`, `node scripts/icecream-test.mjs`, `node scripts/truck-test.mjs`
+(with `wrangler dev` on port 8787).
 
 ## Real recordings
 

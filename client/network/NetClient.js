@@ -6,7 +6,7 @@
 // Cloudflare restarting the room...), it reconnects by itself and joins
 // again AT YOUR CURRENT POSITION, so nothing "resets".
 
-import { MSG } from '../../shared/constants.js';
+import { MSG, MAX_PLAYERS, syncClock } from '../../shared/constants.js';
 
 const RETRY_DELAYS_MS = [500, 1000, 2000, 4000, 5000]; // then keeps trying every 5 s
 
@@ -15,6 +15,7 @@ export class NetClient {
     this.ws = null;
     this.myId = null;
     this.retries = 0;
+    this.full = false; // true while the server refuses us because the room is full
     // Called when (re)joining, so we can send our current position. main.js sets it.
     this.getJoinPose = () => null;
     // Callbacks — main.js replaces these.
@@ -62,9 +63,12 @@ export class NetClient {
     const room = new URLSearchParams(location.search).get('room') || 'main';
     const ws = new WebSocket(`${protocol}://${location.host}/ws?room=${encodeURIComponent(room)}`);
     this.ws = ws;
-    this.onStatus(this.retries ? 'reconnecting' : 'connecting');
+    this.onStatus(this.full ? 'full' : this.retries ? 'reconnecting' : 'connecting');
+    let opened = false;
 
     ws.addEventListener('open', () => {
+      opened = true;
+      this.full = false;
       this.retries = 0;
       this.onStatus('connected');
       const join = this.spectate
@@ -81,7 +85,7 @@ export class NetClient {
       const now = performance.now(); // arrival time, used for interpolation
 
       switch (msg.t) {
-        case MSG.WELCOME: this.myId = msg.id; this.onWelcome(msg.id); break;
+        case MSG.WELCOME: syncClock(msg.now); this.myId = msg.id; this.onWelcome(msg.id); break;
         case MSG.ROSTER: this.onRoster(msg.l); break;
         case MSG.SNAPSHOT: this.onSnapshot(msg, now); break;
         case MSG.VEHICLE: this.onVehicle(msg.o, msg.g ?? 0); break;
@@ -112,11 +116,25 @@ export class NetClient {
     ws.addEventListener('close', () => {
       if (this.ws !== ws) return; // an old socket, ignore
       this.myId = null;
-      this.onStatus('reconnecting');
+      this.onStatus(this.full ? 'full' : 'reconnecting');
+      if (!opened) this.checkFull(room); // refused straight away: maybe the room is full
       const delay = RETRY_DELAYS_MS[Math.min(this.retries, RETRY_DELAYS_MS.length - 1)];
       this.retries++;
       setTimeout(() => this.open(), delay);
     });
+  }
+
+  // The server refuses new sockets when a room is full, and a browser cannot see why a WebSocket
+  // was refused. So ask the small public /online count, and say "full" instead of "reconnecting".
+  checkFull(room) {
+    fetch(`/online?room=${encodeURIComponent(room)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((o) => {
+        if (!o || this.connected) return;
+        this.full = o.total + o.watching >= MAX_PLAYERS;
+        this.onStatus(this.full ? 'full' : 'reconnecting');
+      })
+      .catch(() => {});
   }
 
   get connected() {

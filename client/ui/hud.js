@@ -64,14 +64,23 @@ export function createHud() {
       shutter.classList.add('on');
     },
 
-    setStatus(text) {
-      status.textContent = text || '';
+    // These three are called every frame: only touch the page when the text really changed.
+    // alert = a connection problem: always shown in full, even in a narrow window.
+    setStatus(text, alert = false) {
+      text = text || '';
+      if (status.dataset.key === text) return;
+      status.dataset.key = text;
+      status.textContent = text;
+      status.classList.toggle('alert', alert);
       show(status, !!text);
     },
 
     // List of everyone in the room (proves the connection works).
     setPlayers(list) {
-      players.textContent = list.join('\n');
+      const text = list.join('\n');
+      if (players.dataset.key === text) return;
+      players.dataset.key = text;
+      players.textContent = text;
       show(players, list.length > 0);
     },
 
@@ -142,7 +151,10 @@ export function createHud() {
     },
 
     setHint(text) {
-      hint.textContent = text || '';
+      text = text || '';
+      if (hint.dataset.key === text) return;
+      hint.dataset.key = text;
+      hint.textContent = text;
       show(hint, !!text);
     },
 

@@ -87,7 +87,8 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
   rebuild();
   // Drag to rotate the preview.
   renderer.domElement.addEventListener('pointerdown', (e) => { dragging = true; lastX = e.clientX; });
-  window.addEventListener('pointerup', () => { dragging = false; });
+  const stopDrag = () => { dragging = false; };
+  window.addEventListener('pointerup', stopDrag);
   renderer.domElement.addEventListener('pointermove', (e) => {
     if (!dragging) return;
     spin += (e.clientX - lastX) * 0.01;
@@ -271,6 +272,7 @@ export function createOutfitEditor({ faction, look: initial, slogan = '', onChan
     getLook: () => ({ ...look }),
     destroy() {
       alive = false;
+      window.removeEventListener('pointerup', stopDrag);
       offWallet();
       if (mesh) mesh.userData.dispose();
       renderer.dispose();

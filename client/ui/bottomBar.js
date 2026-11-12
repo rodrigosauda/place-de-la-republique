@@ -50,8 +50,15 @@ export function createBottomBar({ onEmote, onTag, onChat, onOutfitSaved, onOpenW
   window.addEventListener('keydown', (e) => {
     if (picker.style.display === 'none') return;
     const n = Number(e.key);
-    if (n >= 1 && n <= EMOTE_LIST.length) { e.preventDefault(); closePicker(); onEmote(n - 1); }
-    if (e.key === 'Escape' || e.key === 't' || e.key === 'T') { e.preventDefault(); closePicker(); }
+    const pick = n >= 1 && n <= EMOTE_LIST.length;
+    const close = e.key === 'Escape' || e.key === 't' || e.key === 'T';
+    if (!pick && !close) return;
+    // The picker used this key: keep it away from the game, or the same press would also
+    // send a chant (1-4) or open the picker again (T) on the next frame.
+    e.preventDefault();
+    e.stopPropagation();
+    closePicker();
+    if (pick) onEmote(n - 1);
   }, true);
 
   // ---------------------------------------------------------- modal windows
@@ -67,10 +74,19 @@ export function createBottomBar({ onEmote, onTag, onChat, onOutfitSaved, onOpenW
     modal.cleanup = cleanup;
     modal.addEventListener('pointerdown', (e) => { if (e.target === modal) closeModal(); });
     document.body.appendChild(modal);
+    window.addEventListener('keydown', onModalKey, true);
     onOpenWindow();
+  }
+  // Esc closes the window (like the shop). Nothing is saved: same as Cancel.
+  function onModalKey(e) {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeModal();
   }
   function closeModal() {
     if (!modal) return;
+    window.removeEventListener('keydown', onModalKey, true);
     modal.cleanup();
     modal.remove();
     modal = null;
@@ -101,13 +117,17 @@ export function createBottomBar({ onEmote, onTag, onChat, onOutfitSaved, onOpenW
         <h2>Menu</h2>
         <table class="controls">
           <tr><td>Look around</td><td>move the mouse (Esc frees it)</td></tr>
-          <tr><td>Move / jump</td><td>WASD / Space</td></tr>
+          <tr><td>Move · run · jump</td><td>WASD · hold Shift · Space</td></tr>
           <tr><td>Hit · block</td><td>click or F · right mouse or Q</td></tr>
-          <tr><td>Weapon</td><td>R</td></tr>
+          <tr><td>Dodge roll</td><td>C</td></tr>
           <tr><td>Grab / throw bins</td><td>G</td></tr>
-          <tr><td>Truck · water</td><td>E · hold click/Space</td></tr>
+          <tr><td>Role ability</td><td>R (medic, journalist, drummer)</td></tr>
+          <tr><td>Water cannon (police)</td><td>E in / out · hold click or Space: water · V: view</td></tr>
+          <tr><td>Tear gas</td><td>H: throw (police) · G: throw it back (protesters)</td></tr>
+          <tr><td>Ice-cream van</td><td>E</td></tr>
           <tr><td>Emotes · tag · chat</td><td>T · V · Enter</td></tr>
-          <tr><td>Chants · mute · zoom</td><td>1–4 · M · wheel</td></tr>
+          <tr><td>Chants · missions</td><td>1–4 · P</td></tr>
+          <tr><td>Mute · zoom</td><td>M · mouse wheel</td></tr>
         </table>
         <div class="sound-box">
           <b>Sound</b>

@@ -243,7 +243,7 @@ export function createProgress({ faction, role, tutorial = false }) {
     peaceRun += dt;
     state.counts.peaceBest = Math.max(state.counts.peaceBest, peaceRun);
     xpFraction += dt * XP.perMinute / 60;
-    if (xpFraction >= 1) { const n = Math.floor(xpFraction); xpFraction -= n; state.xp += n; }
+    if (xpFraction >= 1) { const n = Math.floor(xpFraction); xpFraction -= n; addXp(n); } // addXp: a level reached by playing pays its coins too
     if (secondsAcc < 1) return;
     const whole = Math.floor(secondsAcc);
     secondsAcc -= whole;

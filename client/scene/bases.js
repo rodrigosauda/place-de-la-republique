@@ -107,12 +107,16 @@ function addSafeZoneMarking(scene, base, color, signAt) {
     c.font = '900 54px system-ui, sans-serif'; c.fillText(base.label, 256, 84);
     c.font = '700 34px system-ui, sans-serif'; c.fillStyle = css; c.fillText('SAFE ZONE · NO FIGHTING', 256, 140);
   });
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.2), new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide }));
+  // Two faces back to back, so the text reads the right way round from the square AND from
+  // inside the base (one double-sided face shows mirrored writing to whoever spawns behind it).
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.2), new THREE.MeshStandardMaterial({ map: tex }));
   sign.position.set(signAt[0], 3.1, signAt[1]);
   sign.lookAt(signAt[0], 3.1, 0); // face the square
+  const back = sign.clone();
+  back.rotateY(Math.PI);          // face the base
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 6), std(0x333333));
   pole.position.set(sign.position.x, 1.3, sign.position.z);
-  scene.add(sign, pole);
+  scene.add(sign, back, pole);
   return ring;
 }
 

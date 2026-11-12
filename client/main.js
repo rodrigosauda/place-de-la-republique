@@ -12,6 +12,7 @@ import {
   MSG, TICK_MS, SPAWNS, VEHICLE_ENTER_DISTANCE, FACTIONS, MAX_HP, EMOTES, WEAPONS,
   GRAB_RANGE, THROW_SPEED, TAG_RANGE, EMOTE_LIST, round2, gameMinutes,
   GAS_COOLDOWN_MS, GAS_RANGE, inSafeZone, inPlaza, TRUCK_SPAWN, isCurfew, ROLES, badgeText, OPINION, ICE_CREAM,
+  TRUCK_STALL_CROWD, MAX_PLAYERS,
 } from '../shared/constants.js';
 import { ICE_CREAM_COST } from '../shared/tasks.js';
 import { buildIceCreamVan } from './scene/iceCreamVan.js';
@@ -23,7 +24,7 @@ import { createWeather } from './scene/weather.js';
 import { createRiotScene } from './scene/riot.js';
 import { buildBases } from './scene/bases.js';
 import { createRiotUi } from './ui/riotUi.js';
-import { LOW_QUALITY } from './quality.js';
+import { LOW_QUALITY, IS_TOUCH } from './quality.js';
 import { Physics } from './physics/physics.js';
 import { createRenderers } from './scene/renderer.js';
 import { buildWorld } from './scene/world.js';
@@ -146,7 +147,7 @@ async function start() {
   let wasCurfew = null;
 
   // ------------------------------------------------------ chat
-  const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const isTouch = IS_TOUCH; // phone / tablet: joystick and buttons instead of mouse capture
   const chat = createChat({
     input,
     onSend: (text) => net.send({ t: MSG.CHAT, m: text }),
@@ -420,7 +421,7 @@ async function start() {
   };
   // New day: everything goes back to where it started (bins, truck, graffiti, you).
   net.onReset = () => {
-    riot.gasClouds.length = 0;
+    riot.clearGas(); // the clouds and the canisters lying on the ground
     truck.place(TRUCK_SPAWN.x, TRUCK_SPAWN.y, TRUCK_SPAWN.z, TRUCK_SPAWN.r);
     if (!local) return;
     if (local.inVehicle) exitTruck(false);
@@ -867,21 +868,24 @@ async function start() {
   });
 
   function handleKeys(driving) {
-    // E = enter / exit the truck
-    if (input.pressed('KeyE') && !driving && nearVan()) buyIceCream();
-    else if (input.pressed('KeyE')) {
+    // input.pressed() answers true only ONCE per key press, so a key with two meanings is read once here.
+    const keyE = input.pressed('KeyE');
+    const keyV = input.pressed('KeyV');
+    // E = buy an ice cream at the van, otherwise enter / exit the truck
+    if (keyE && !driving && nearVan()) buyIceCream();
+    else if (keyE) {
       if (driving) exitTruck();
       else if (!local.isKO && local.position.distanceTo(truck.position) < VEHICLE_ENTER_DISTANCE && (!truck.ownerId || !truck.gunnerId)) {
         net.send({ t: MSG.ENTER }); // wait for the server's answer (MSG.VEHICLE); protesters get told why not
       }
     }
-    if (input.pressed('KeyV') && driving) cannonView = !cannonView; // in the truck: cannon view / chase camera
+    if (keyV && driving) cannonView = !cannonView; // in the truck: cannon view / chase camera
     if (input.pressed('KeyF') && !driving) attack();
     if (input.pressed('KeyC') && !driving) local.wantDash = true; // dodge roll
     if (input.pressed('KeyG') && !driving) grabOrThrow();
     if (input.pressed('KeyT')) bar.openPicker();
     if (input.pressed('KeyO')) bar.openOutfit();
-    if (input.pressed('KeyV') && !driving) sprayTag();
+    if (keyV && !driving) sprayTag();
     if (input.pressed('KeyM')) sfx.toggleMute();
     if (input.pressed('KeyH') && !driving) throwGas();
     if (input.pressed('KeyR')) useAbility();
@@ -922,9 +926,10 @@ async function start() {
     const texts = {
       connecting: 'Connecting…',
       reconnecting: 'Connection lost — reconnecting…',
+      full: `Room "${room}" is full (${MAX_PLAYERS} people) — trying again every few seconds…`,
       connected: `${label} · room "${room}" · ${count} player${count > 1 ? 's' : ''} online`,
     };
-    hud.setStatus(texts[status] ?? '');
+    hud.setStatus(texts[status] ?? '', status !== 'connected');
     if (status === 'connected') {
       const list = [`• ${local.name} (you)${net.role ? ' — ' + ROLES[net.role].label : ''}`];
       for (const r of humans) list.push(`• ${r.name} — ${FACTIONS[r.faction].label}${roles.get(r.id) ? ' ' + ROLES[roles.get(r.id)].label : ''}`);
@@ -957,7 +962,7 @@ async function start() {
       hud.setHint(seat === 'driver' ? `W/S: drive · A/D: steer${water}${view} · E: get out`
         : `You work the cannon: move the mouse to aim${water}${view} · E: get out`);
     } else if (local.position.distanceTo(truck.position) < VEHICLE_ENTER_DISTANCE) {
-      if (local.faction !== 'c') hud.setHint('The police water cannon. Surround it with 3+ protesters or block it with a barricade; hit its windscreen to paint it!');
+      if (local.faction !== 'c') hud.setHint(`The police water cannon. Surround it with ${TRUCK_STALL_CROWD}+ protesters or block it with a barricade; hit its windscreen to paint it!`);
       else if (!truck.ownerId) hud.setHint('Press E to drive the water cannon');
       else if (!truck.gunnerId) hud.setHint(`Press E to work the cannon (${names.get(truck.ownerId) ?? '?'} drives)`);
       else hud.setHint('The water cannon is full (driver + cannon)');
@@ -1078,4 +1083,25 @@ async function start() {
   window.game = { sfx, riot, riotUi, scene, physics, truck, remotes, props, net, cam, renderer, get local() { return local; }, get score() { return score; }, get tutorial() { return tutorial; }, get progress() { return progress; }, get adapt() { return { ratio, ratioCeiling, frameCount, frameTime }; } };
 }
 
-start();
+// If the game cannot start (no WebGL, the physics file did not load...), say so
+// instead of leaving the loading screen up for ever.
+start().catch((err) => {
+  console.error(err);
+  const loading = document.getElementById('loading') ?? document.body.appendChild(Object.assign(document.createElement('div'), { id: 'loading' }));
+  loading.classList.remove('done');
+  loading.textContent = '';
+  const title = document.createElement('div');
+  title.textContent = 'The game could not start';
+  const why = document.createElement('div');
+  why.style.cssText = 'font-size:13px;opacity:.75;max-width:420px;text-align:center;line-height:1.4;padding:0 16px';
+  why.textContent = 'Your browser needs WebGL (3D graphics) switched on. Try reloading the page, or another browser such as Chrome or Firefox.';
+  const detail = document.createElement('div');
+  detail.style.cssText = 'font-size:11px;opacity:.45;max-width:420px;text-align:center;padding:0 16px';
+  detail.textContent = String(err?.message ?? err).slice(0, 200);
+  const again = document.createElement('button');
+  again.type = 'button';
+  again.textContent = 'Reload';
+  again.style.cssText = 'padding:8px 18px;border:0;border-radius:8px;font:600 14px system-ui,sans-serif;cursor:pointer';
+  again.addEventListener('click', () => location.reload());
+  loading.append(title, why, detail, again);
+});

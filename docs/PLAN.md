@@ -19,7 +19,7 @@ Everything below was discussed and decided while building the game with Claude.
 5. Log in to Cloudflare once: `npx wrangler login` (your own Cloudflare account, the one that hosts the live game).
 6. Put a new version online: `npm run deploy`
 7. Tests (with `npx wrangler dev --port 8787` running in another Terminal window):
-   `node scripts/shop-test.mjs` · `node scripts/truck-test.mjs` · `node scripts/icecream-test.mjs`
+   `node scripts/shop-test.mjs` · `node scripts/truck-test.mjs` · `node scripts/icecream-test.mjs` · `node scripts/join-test.mjs`
 
 Push your changes to GitHub with GitHub Desktop ("Push origin") before and after working, so GitHub always has the latest version.
 
@@ -132,7 +132,7 @@ Known limits: coins live in one browser (clearing it resets them); old purchases
 | Ice-cream van | `client/scene/iceCreamVan.js` |
 | Start screen, outfit editor, shop, tasks panel | `client/ui/startMenu.js`, `outfitEditor.js`, `shop.js`, `progress.js` |
 | Coins wallet (in the browser) | `client/shop/wallet.js` |
-| Server tests | `scripts/shop-test.mjs`, `scripts/truck-test.mjs`, `scripts/icecream-test.mjs` |
+| Server tests | `scripts/shop-test.mjs`, `scripts/truck-test.mjs`, `scripts/icecream-test.mjs`, `scripts/join-test.mjs` |
 
 The detailed shop plan (with pictures of the products and the proposed protester gear) is the Claude document
 "Shop improvement plan": https://claude.ai/artifact/1ZgGEWS6Kemsz7M3sU2LGA

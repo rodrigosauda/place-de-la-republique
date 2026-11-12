@@ -43,7 +43,7 @@ export const MSG = {
   ICE: 'i',         // { t }                 buy an ice cream at the van (paid in coins by the client)
 
   // server -> client
-  WELCOME: 'w',     // { t, id }                         your player id
+  WELCOME: 'w',     // { t, id, now }                    your player id + the server's clock (ms), see syncClock
   ROSTER: 'r',      // { t, l: [[id, name, faction, slogan, isNpc, look], ...] } who is in the room (players + NPCs)
   SNAPSHOT: 'S',    // { t, p: [[id,x,y,z,r,v,hp,b,w], ...], v: [x,y,z,r,ownerId|0,spraying,water], o?: [[i,x,z], ...] }
   VEHICLE: 'v',     // { t, o: driverId|0, g: gunnerId|0 } who sits in the truck
@@ -213,8 +213,15 @@ export const CURFEW_END = 6 * 60;          // 06:00
 export const CURFEW_SCORE_EVERY_MS = 5000; // during curfew, +1 point every 5 s to whoever controls the plaza
 
 // Minutes since midnight in the game, e.g. 1380 = 23:00.
-// For testing only: shift the game clock (never set in the live game).
+// __clockOffset shifts the game clock (ms). On the server it is only set for testing. In the browser
+// syncClock() sets it when the computer's own clock is wrong, so everyone still sees the same hour.
 const clockOffset = () => globalThis.__clockOffset || 0;
+const CLOCK_SYNC_MIN_MS = 2000; // smaller differences are just network delay: leave the clock alone
+export function syncClock(serverNowMs, localNowMs = Date.now()) {
+  if (!Number.isFinite(serverNowMs)) return;
+  const diff = serverNowMs - localNowMs;
+  globalThis.__clockOffset = Math.abs(diff) < CLOCK_SYNC_MIN_MS ? 0 : diff;
+}
 // The 12 real minutes are NOT spread evenly over the 24 game hours: the quiet night is quick,
 // and most of the real time goes to the march, the clashes and the evening. [from h, to h, real seconds]
 const CLOCK_SEGMENTS = [[0, 6, 40], [6, 9, 60], [9, 23, 560], [23, 24, 60]];

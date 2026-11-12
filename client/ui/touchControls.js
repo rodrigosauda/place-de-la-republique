@@ -3,9 +3,10 @@
 // They just feed the same Input object as the keyboard, so the game code
 // doesn't care where the input came from. Drag on the 3D view to look around.
 
+import { IS_TOUCH } from '../quality.js';
+
 export function setupTouchControls(input, { onChat }) {
-  const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  if (!isTouch) return { setFaction() {} };
+  if (!IS_TOUCH) return { setFaction() {} };
 
   const root = document.createElement('div');
   root.className = 'touch-ui';

@@ -38,7 +38,7 @@ import {
 } from '../shared/timeline.js';
 import { sanitize } from '../shared/filter.js';
 import { getOwned } from './shop.js';
-import { sanitizeLook, lookToArray, defaultLook, randomLook } from '../shared/looks.js';
+import { sanitizeLook, lookToArray, defaultLook, randomLook, PREMIUM_ENFORCED } from '../shared/looks.js';
 
 // Places NPCs should not walk into (monument, café, métro entrances, kiosk): [x, z, halfW, halfD]
 // Places NPCs don't walk into: the monument, métro entrances on the square, the two bases.
@@ -56,6 +56,7 @@ const MOVE_BUDGET_MAX = 12;     // metres of "lag spike" a player may catch up i
 const JOIN_TIMEOUT_MS = 15000;  // a socket that never sends JOIN is closed after this long
 const TRUCK_AFK_MS = 45000;     // a parked, silent driver loses the truck after this long
 const AD_NAMES_MAX = 500;       // unique names remembered per ad campaign per day
+const LOOK_COOLDOWN_MS = 300;   // shortest time between two outfit changes by the same player
 // How the line reacts (metres per real second).
 const LINE_SPEED = { clashes: 0.25, curfew: 3 };  // advancing speed with no resistance
 const LINE_RETREAT = { clashes: 0.35, curfew: 2 };  // falling back when protesters overwhelm it
@@ -214,12 +215,15 @@ export class GameRoom extends DurableObject {
     try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || typeof msg.t !== 'string') return;
 
-    // Premium outfit items are checked against the player's wallet code (cached, see ownedFor).
-    const owned = msg.t === MSG.JOIN || msg.t === MSG.LOOK ? await this.ownedFor(msg.ow, msg.t === MSG.LOOK) : null;
-
-    const me = ws.deserializeAttachment(); // null until JOIN
+    const me = ws.deserializeAttachment(); // { pending } until JOIN
     const p = me && this.players.get(me.id);
     if (p && this.overRateLimit(p.id)) return;
+
+    // Premium outfit items are checked against the player's wallet code (cached, see ownedFor).
+    // Only while premium items are enforced: in the free game nobody's wallet is asked, so a
+    // stranger cannot make this room call the Wallet object with made-up codes.
+    const owned = PREMIUM_ENFORCED && (msg.t === MSG.JOIN || msg.t === MSG.LOOK)
+      ? await this.ownedFor(msg.ow, msg.t === MSG.LOOK) : undefined;
 
     switch (msg.t) {
       case MSG.JOIN: return this.handleJoin(ws, me, msg, owned);
@@ -286,7 +290,7 @@ export class GameRoom extends DurableObject {
     this.register(name, faction, slogan, player.l);
     this.countJoin(name);
 
-    this.send(ws, { t: MSG.WELCOME, id });
+    this.send(ws, { t: MSG.WELCOME, id, now: this.clockNow() });
     this.send(ws, { t: MSG.VEHICLE, o: this.truck.o, g: this.truck.g });
     this.send(ws, { t: MSG.PROPS, l: this.props.map((pr, i) => [pr[0], pr[1], this.carried.get(i) || 0]) });
     this.updateOpinion(Date.now());
@@ -303,7 +307,7 @@ export class GameRoom extends DurableObject {
     const id = this.newId();
     this.spectators.set(id, ws);
     ws.serializeAttachment({ id, sp: 1 });
-    this.send(ws, { t: MSG.WELCOME, id });
+    this.send(ws, { t: MSG.WELCOME, id, now: this.clockNow() });
     this.send(ws, { t: MSG.VEHICLE, o: this.truck.o, g: this.truck.g });
     this.send(ws, { t: MSG.PROPS, l: this.props.map((pr, i) => [pr[0], pr[1], this.carried.get(i) || 0]) });
     this.updateOpinion(Date.now());
@@ -501,7 +505,13 @@ export class GameRoom extends DurableObject {
 
   // New outfit chosen in the in-game editor.
   handleLook(ws, p, msg, owned) {
-    p.l = lookToArray(sanitizeLook(msg.l, p.f, owned));
+    // Each change is saved and sent to everyone, so: not more than a few per second, and only real changes.
+    const now = Date.now();
+    if (now - (p.lt || 0) < LOOK_COOLDOWN_MS) return;
+    const look = lookToArray(sanitizeLook(msg.l, p.f, owned));
+    if (look.every((v, i) => v === p.l[i])) return;
+    p.lt = now;
+    p.l = look;
     ws.serializeAttachment(p);
     this.register(p.n, p.f, p.s, p.l);
     this.broadcastRoster();
@@ -575,7 +585,9 @@ export class GameRoom extends DurableObject {
 
   addGasCloud(x, z, by, removed = 0) {
     const id = ++this.gasId;
-    this.gas.push({ id, x, z, t: Date.now() });
+    const now = Date.now();
+    this.gas = this.gas.filter((g) => now - g.t < GAS_DURATION_MS); // forget the clouds that are gone
+    this.gas.push({ id, x, z, t: now });
     const msg = { t: MSG.GAS_OUT, id, p: [round2(x), round2(z)], by };
     if (removed) msg.rm = removed;
     this.broadcast(msg);
@@ -1323,9 +1335,16 @@ export class GameRoom extends DurableObject {
     this.markDirty();
   }
 
+  // The time the game clock runs on here (real time, plus the test offset if one is set).
+  // Sent on join, so a browser whose computer clock is wrong still shows the same game hour as everyone.
+  clockNow() {
+    return Date.now() + (globalThis.__clockOffset || 0);
+  }
+
   newId() {
-    let id; // short random id, e.g. "k3f9", unique in this room
-    do { id = Math.random().toString(36).slice(2, 6); } while (this.players.has(id) || id.startsWith('n'));
+    let id; // short random id, e.g. "k3f9", unique in this room (ids starting with "n" are NPCs)
+    do { id = Math.random().toString(36).slice(2, 6); }
+    while (id.length < 4 || id.startsWith('n') || this.players.has(id) || this.spectators.has(id));
     return id;
   }
 

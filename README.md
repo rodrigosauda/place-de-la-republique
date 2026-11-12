@@ -12,7 +12,7 @@ Everything runs on **one Cloudflare Worker** (free plan): static client + a `Gam
 place-de-la-republique/
 ├── index.html              # page shell + loading screen, loads client/main.js
 ├── package.json            # scripts: dev, build, preview, deploy
-├── vite.config.js          # build to dist/, proxy /ws -> wrangler dev in development
+├── vite.config.js          # build to dist/, proxy /ws (+ /online, /last, /stats, /shop) -> wrangler dev in development
 ├── wrangler.jsonc          # Worker + static assets + Durable Object + migration
 ├── scripts/                # ensure-dist.js (empty dist/ for wrangler dev) · build-map.py (OSM -> mapData.json)
 ├── data/                   # raw OpenStreetMap download
@@ -253,7 +253,7 @@ levels and winning the day, and spend them in the **Shop** (cosmetic items only,
 **ice-cream van** (+1 heart, no fighting while eating, a no-fighting zone around it). Coins and unlocked items are kept
 in the player's browser (`client/shop/wallet.js`); `PREMIUM_ENFORCED = false` in `shared/looks.js`, so the server no
 longer checks ownership. The old real-money checkout (`worker/shop.js`, `worker/Wallet.js`, `PAYMENT_MODE`) is still in
-the code but unused. Tests: `node scripts/shop-test.mjs`, `node scripts/icecream-test.mjs`, `node scripts/truck-test.mjs`
+the code but unused. Tests: `node scripts/shop-test.mjs`, `node scripts/icecream-test.mjs`, `node scripts/truck-test.mjs`, `node scripts/join-test.mjs`
 (with `wrangler dev` on port 8787).
 
 ## Real recordings

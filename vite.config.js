@@ -24,6 +24,12 @@ export default defineConfig({
       // WebSocket requests to /ws are forwarded to `wrangler dev` (8787),
       // where the Durable Object runs locally.
       '/ws': { target: 'ws://localhost:8787', ws: true },
+      // The small HTTP endpoints of the Worker (start menu: who is online, how yesterday ended; the shop).
+      // Without these, Vite answers them with index.html and the start menu quietly shows nothing.
+      '/online': 'http://localhost:8787',
+      '/last': 'http://localhost:8787',
+      '/stats': 'http://localhost:8787',
+      '/shop': 'http://localhost:8787',
     },
   },
 });

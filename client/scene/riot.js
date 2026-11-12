@@ -453,7 +453,6 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
     gasClouds,
     get crowd() { return crowd; },
     get police() { return police; },
-    get line() { return line; },
 
     // Things the extras walk around: [[x, z, radius], ...] (tree trunks, lamp posts, benches).
     setObstacles(list) {
@@ -477,6 +476,11 @@ export function createRiotScene(scene, physics, { lowQuality = false } = {}) {
     removeGas(id) {
       const i = gasClouds.findIndex((g) => g.id === id);
       if (i >= 0) { scene.remove(gasClouds[i].can); gasClouds.splice(i, 1); }
+    },
+    // New day: every cloud and every canister goes.
+    clearGas() {
+      for (const g of gasClouds) scene.remove(g.can);
+      gasClouds.length = 0;
     },
     // A fresh canister you could pick up and throw back (protesters).
     canisterNear(x, z) {

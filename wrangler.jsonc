@@ -11,6 +11,7 @@
 
   // Pins the Workers runtime behaviour. Keep it fixed; bump it deliberately later.
   "compatibility_date": "2025-09-01",
+  "workers_dev": true,
 
   // Static assets = the Vite build output (index.html, JS bundle, ...).
   "assets": {
@@ -19,9 +20,8 @@
     "binding": "ASSETS",
     // Unknown paths fall back to index.html (handy if you add client-side routes later).
     "not_found_handling": "single-page-application",
-    // IMPORTANT: requests to /ws must reach our Worker code first,
-    // otherwise the SPA fallback would answer them with index.html.
-    "run_worker_first": ["/ws", "/stats", "/last", "/online", "/shop/*"]
+    // Gate every request (password + /ws) before static assets.
+    "run_worker_first": true
   },
 
   // The Durable Object that runs the multiplayer room.
@@ -46,5 +46,9 @@
   "vars": { "PAYMENT_MODE": "test" },
 
   // Shows console.log output of the deployed Worker in the Cloudflare dashboard.
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+
+  "routes": [
+    { "pattern": "place.micumujo.com", "custom_domain": true }
+  ]
 }

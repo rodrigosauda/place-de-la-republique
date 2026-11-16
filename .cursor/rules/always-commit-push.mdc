@@ -1,0 +1,13 @@
+---
+description: Always commit and push Place de la République changes to GitHub
+alwaysApply: true
+---
+
+# Always commit and push
+
+After any change in this repo, commit and push to GitHub without waiting to be asked. This overrides “only commit when requested” for Place de la République.
+
+- Commit with a HEREDOC message that says why.
+- Push `main` (or the current branch, then keep `main` in sync).
+- Never force-push, never `--no-verify`, never commit secrets (`GAME_PASSWORD`, tokens, `.env`).
+- Skip an empty commit if there is nothing to commit.
